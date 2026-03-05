@@ -47,9 +47,6 @@
       "bracketSameLine": false
     }
   },
-<<<<<<< HEAD
-  "css": {
-=======
   "overrides": [
     {
       "include": ["test/database.test.ts"],
@@ -62,7 +59,6 @@
     }
   ],
   "json": {
->>>>>>> de90acd (restore double quote and semi colon and trailing coma)
     "formatter": {
       "quoteStyle": "double"
     }

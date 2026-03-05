@@ -17,7 +17,6 @@ vi.mock("@supabase/supabase-js", () => ({
 describe("Login API", () => {
   const env = {
     SUPABASE_URL: "https://test.supabase.co",
-    SUPABASE_KEY: "test-key",
     SUPABASE_ANON_KEY: "test-key",
   };
 

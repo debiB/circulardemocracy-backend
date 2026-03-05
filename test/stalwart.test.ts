@@ -58,15 +58,30 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should process a valid email and classify it", async () => {
     // 1. checkExternalIdExists -> not a duplicate
-    mockFetch.mockResolvedValueOnce(createMockResponse([]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    } as Response);
     // 2. findPoliticianByEmail -> found
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 1, name: "Test Politician" }]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 1, name: "Test Politician" }],
+    } as Response);
     // 3. classifyMessage (no hint) -> findSimilarCampaigns -> found a match
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 10, name: "Test Campaign", similarity: 0.8 }],
+    } as Response);
     // 4. getDuplicateRank -> not a duplicate
-    mockFetch.mockResolvedValueOnce(createMockResponse([], 200, { "Content-Range": "*/0" }));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ count: 0 }],
+    } as Response);
     // 5. insertMessage -> success
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 101 }], 201));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 101 }],
+    } as Response);
 
     // Mock AI embedding
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
@@ -90,11 +105,20 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should handle politician not found", async () => {
     // 1. checkExternalIdExists -> not a duplicate
-    mockFetch.mockResolvedValueOnce(createMockResponse([]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    } as Response);
     // 2. findPoliticianByEmail (exact) -> not found
-    mockFetch.mockResolvedValueOnce(createMockResponse([]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    } as Response);
     // 3. findPoliticianByEmail (additional) -> not found
-    mockFetch.mockResolvedValueOnce(createMockResponse([]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    } as Response);
 
     const req = new Request("http://localhost/mta-hook", {
       method: "POST",
@@ -115,7 +139,10 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should handle duplicate messages", async () => {
     // 1. checkExternalIdExists -> DUPLICATE FOUND
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 999 }]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 999 }],
+    } as Response);
 
     const req = new Request("http://localhost/mta-hook", {
       method: "POST",
@@ -138,9 +165,15 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should handle messages that are too short", async () => {
     // 1. checkExternalIdExists -> not a duplicate
-    mockFetch.mockResolvedValueOnce(createMockResponse([]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [],
+    } as Response);
     // 2. findPoliticianByEmail -> found
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 1, name: "Test Politician" }]));
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 1, name: "Test Politician" }],
+    } as Response);
 
     const shortPayload = { ...stalwartPayload, body: { text: "short" } };
 

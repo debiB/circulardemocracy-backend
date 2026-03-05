@@ -66,8 +66,14 @@ describe("DatabaseClient", () => {
 
     it("should return null when politician not found", async () => {
       mockFetch
-        .mockResolvedValueOnce(createMockResponse([]))
-        .mockResolvedValueOnce(createMockResponse([]));
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [],
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [],
+        } as Response);
 
       const result = await db.findPoliticianByEmail("notfound@example.com");
 
@@ -94,7 +100,10 @@ describe("DatabaseClient", () => {
         status: "active",
       };
 
-      mockFetch.mockResolvedValueOnce(createMockResponse([mockCampaign]));
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [mockCampaign],
+      } as Response);
 
       const result = await db.classifyMessage(mockEmbedding, "climate");
 
@@ -115,8 +124,14 @@ describe("DatabaseClient", () => {
       };
 
       mockFetch
-        .mockResolvedValueOnce(createMockResponse([])) // No hint match
-        .mockResolvedValueOnce(createMockResponse([mockSimilarCampaign]));
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [], // No hint match
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [mockSimilarCampaign],
+        } as Response);
 
       const result = await db.classifyMessage(mockEmbedding, "nonexistent");
 
@@ -136,9 +151,18 @@ describe("DatabaseClient", () => {
       };
 
       mockFetch
-        .mockResolvedValueOnce(createMockResponse([])) // No hint match
-        .mockResolvedValueOnce(createMockResponse([])) // No similar campaigns
-        .mockResolvedValueOnce(createMockResponse([mockUncategorized])); // Found uncategorized
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [], // No hint match
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [], // No similar campaigns
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [mockUncategorized], // Found uncategorized
+        } as Response);
 
       const result = await db.classifyMessage(mockEmbedding);
 
@@ -152,9 +176,10 @@ describe("DatabaseClient", () => {
 
   describe("getDuplicateRank", () => {
     it("should return correct duplicate count", async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse([], 200, { "Content-Range": "*/3" }),
-      );
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ count: 3 }],
+      } as Response);
 
       const result = await db.getDuplicateRank("hash123", 1, 2);
 
@@ -162,9 +187,10 @@ describe("DatabaseClient", () => {
     });
 
     it("should return 0 when no duplicates found", async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse([], 200, { "Content-Range": "*/0" }),
-      );
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ count: 0 }],
+      } as Response);
 
       const result = await db.getDuplicateRank("hash123", 1, 2);
 
@@ -189,7 +215,10 @@ describe("DatabaseClient", () => {
         processing_status: "processed",
       };
 
-      mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 42 }], 201));
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 42 }],
+      } as Response);
 
       const result = await db.insertMessage(mockMessage);
 

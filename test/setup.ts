@@ -30,13 +30,13 @@ Object.defineProperty(global, "crypto", {
 
 // Mock console methods for cleaner test output
 const originalConsole = console;
-// global.console = {
-//   ...originalConsole,
-//   log: () => {},
-//   error: () => {},
-//   warn: () => {},
-//   info: () => {},
-// };
+global.console = {
+  ...originalConsole,
+  log: () => {},
+  error: () => {},
+  warn: () => {},
+  info: () => {},
+};
 
 // Restore console for debugging when needed
 export function restoreConsole() {
