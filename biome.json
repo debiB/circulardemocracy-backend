@@ -33,25 +33,23 @@
     "indentStyle": "space",
     "indentWidth": 2,
     "lineEnding": "lf",
-    "lineWidth": 100,
+    "lineWidth": 80,
     "attributePosition": "auto"
   },
   "javascript": {
     "formatter": {
-      "jsxQuoteStyle": "double",
+      "quoteStyle": "double",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "always",
       "quoteProperties": "asNeeded",
-      "trailingCommas": "es5",
-      "semicolons": "asNeeded",
-      "arrowParentheses": "asNeeded",
       "bracketSpacing": true,
-      "bracketSameLine": false,
-      "quoteStyle": "single",
-      "attributePosition": "auto"
+      "bracketSameLine": false
     }
   },
-  "json": {
+  "css": {
     "formatter": {
-      "trailingCommas": "none"
+      "quoteStyle": "double"
     }
   }
 }
