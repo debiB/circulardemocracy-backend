@@ -1,14 +1,14 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
-import { createClient } from '@supabase/supabase-js'
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { createClient } from "@supabase/supabase-js";
 
 // Define types for env and app
 interface Env {
-  SUPABASE_URL: string
-  SUPABASE_KEY: string
-  SUPABASE_ANON_KEY: string
+  SUPABASE_URL: string;
+  SUPABASE_KEY: string;
+  SUPABASE_ANON_KEY: string;
 }
 
-const app = new OpenAPIHono<{ Bindings: Env }>()
+const app = new OpenAPIHono<{ Bindings: Env }>();
 
 // =============================================================================
 // SCHEMAS
@@ -17,7 +17,7 @@ const app = new OpenAPIHono<{ Bindings: Env }>()
 const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
-})
+});
 
 const UserSchema = z.object({
   id: z.string(),
@@ -32,19 +32,19 @@ const SessionSchema = z.object({
   expires_at: z.number(),
   refresh_token: z.string(),
   user: UserSchema,
-})
+});
 
 // =============================================================================
 // ROUTE
 // =============================================================================
 
 const loginRoute = createRoute({
-  method: 'post',
-  path: '/api/v1/login',
+  method: "post",
+  path: "/api/v1/login",
   request: {
     body: {
       content: {
-        'application/json': {
+        "application/json": {
           schema: LoginSchema,
         },
       },
@@ -52,36 +52,38 @@ const loginRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: SessionSchema } },
-      description: 'Successful login, returns session object',
+      content: { "application/json": { schema: SessionSchema } },
+      description: "Successful login, returns session object",
     },
     401: {
-      description: 'Unauthorized, invalid credentials',
-      content: { 'application/json': { schema: z.object({ error: z.string() }) } },
+      description: "Unauthorized, invalid credentials",
+      content: {
+        "application/json": { schema: z.object({ error: z.string() }) },
+      },
     },
   },
-  tags: ['Auth'],
-})
+  tags: ["Auth"],
+});
 
-app.openapi(loginRoute, async c => {
-  const { email, password } = c.req.valid('json')
+app.openapi(loginRoute, async (c) => {
+  const { email, password } = c.req.valid("json");
 
   //const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY)
-  const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_KEY)
+  const supabase = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_KEY);
   console.log(c.env.SUPABASE_URL, c.env.SUPABASE_KEY, email);
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
-  })
+  });
 
   console.log(data, error);
 
   if (error) {
-    return c.json({ error: error?.code || 'Invalid credentials' }, 401)
+    return c.json({ error: error?.code || "Invalid credentials" }, 401);
   }
 
-  return c.json(data.session)
-})
+  return c.json(data.session);
+});
 
-export default app
+export default app;

@@ -1,14 +1,14 @@
-import { Hono } from 'hono'
-import apiApp from './api'
-import stalwartApp from './stalwart'
+import { Hono } from "hono";
+import apiApp from "./api";
+import stalwartApp from "./stalwart";
 
-console.log('start')
-const app = new Hono()
+console.log("start");
+const app = new Hono();
 
 // Mount the stalwart app under the /stalwart route
-app.route('/stalwart', stalwartApp)
+app.route("/stalwart", stalwartApp);
 
 // Mount the main API app at the root
-app.route('/', apiApp)
+app.route("/", apiApp);
 
-export default app
+export default app;
