@@ -1,3 +1,4 @@
+import type { MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
 import { jwk } from "hono/jwk";
 
@@ -5,14 +6,15 @@ interface Env {
   SUPABASE_URL: string;
 }
 
-export const authMiddleware = createMiddleware<{ Bindings: Env }>(
+export const authMiddleware: MiddlewareHandler<any> = createMiddleware(
   async (c, next) => {
-    if (!c.env.SUPABASE_URL) {
+    const env = c.env as Env;
+    if (!env.SUPABASE_URL) {
       console.error("SUPABASE_URL is not set. Skipping auth.");
       return c.json({ error: "Auth not configured" }, 500);
     }
 
-    const jwks_uri = `${c.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
+    const jwks_uri = `${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
 
     const auth = jwk({
       jwks_uri: jwks_uri,
