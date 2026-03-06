@@ -4,8 +4,16 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": "src"
   },
-  "include": ["src/**/*", "bin/**/*"],
-  "exclude": ["node_modules", "supabase/functions/**/*", "test/**/*"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "supabase/functions/**/*",
+    "test/**/*"
+  ]
 }
