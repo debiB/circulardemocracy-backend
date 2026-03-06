@@ -27,7 +27,7 @@ const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
 
 // Shared middleware
 app.use(
-  "/*",
+  "/api/*",
   cors({
     origin: ["https://*.circulardemocracy.org", "http://localhost:*"],
     allowHeaders: ["Content-Type", "Authorization"],
@@ -35,7 +35,7 @@ app.use(
   }),
 );
 
-app.use("*", async (c, next) => {
+app.use("/api/*", async (c, next) => {
   c.set(
     "db",
     new DatabaseClient({ url: c.env.SUPABASE_URL, key: c.env.SUPABASE_KEY }),

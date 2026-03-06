@@ -12,7 +12,8 @@ interface Env extends AuthEnv {
 const app = new Hono<{ Bindings: Env }>();
 
 // Global middleware for API key authentication on specific routes
-app.use("*", apiKeyAuthMiddleware);
+app.use("/api/*", apiKeyAuthMiddleware);
+app.use("/stalwart/*", apiKeyAuthMiddleware);
 
 // Mount the stalwart app under the /stalwart route
 app.route("/stalwart", stalwartApp);
