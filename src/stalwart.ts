@@ -160,7 +160,7 @@ const mtaHookRoute = createRoute({
     },
   },
   tags: ["Stalwart"],
-  summary: "MTA Hook for incoming emails",
+  summary: "/mta-hook",
   description: "Processes incoming emails and provides routing instructions",
 });
 

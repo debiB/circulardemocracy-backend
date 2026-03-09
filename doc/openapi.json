@@ -36,7 +36,7 @@
         "tags": [
           "Messages"
         ],
-        "summary": "Process incoming citizen message",
+        "summary": "/api/v1/messages",
         "description": "Receives a citizen message, classifies it by campaign, and stores it for politician response",
         "requestBody": {
           "content": {
@@ -488,7 +488,7 @@
           "Campaigns",
           "Statistics"
         ],
-        "summary": "Get campaign statistics",
+        "summary": "/api/v1/campaigns/stats",
         "responses": {
           "200": {
             "description": "Campaign statistics",
@@ -1067,96 +1067,166 @@
         }
       }
     },
-    "/api/v1/stalwart-hook/hook": {
+    "/mta-hook": {
       "post": {
         "tags": [
           "Stalwart"
         ],
-        "summary": "/api/v1/stalwart-hook/hook",
-        "description": "Processes incoming emails from Stalwart MTA and provides routing instructions",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "/mta-hook",
+        "description": "Processes incoming emails and provides routing instructions",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "context": {
-                    "type": "object",
-                    "properties": {}
+                  "messageId": {
+                    "type": "string",
+                    "description": "Stalwart internal message ID"
                   },
-                  "envelope": {
-                    "type": "object",
-                    "properties": {
-                      "from": {
-                        "type": "string",
-                        "format": "email"
-                      },
-                      "to": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "email"
-                        }
-                      }
+                  "queueId": {
+                    "type": "string",
+                    "description": "Queue ID for tracking"
+                  },
+                  "sender": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Envelope sender"
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "email"
                     },
-                    "required": [
-                      "from",
-                      "to"
-                    ]
+                    "description": "All envelope recipients"
                   },
-                  "message": {
+                  "headers": {
                     "type": "object",
-                    "properties": {
-                      "headers": {
-                        "type": "object",
-                        "additionalProperties": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      "subject": {
-                        "type": "string"
-                      },
-                      "body": {
-                        "type": "object",
-                        "properties": {
-                          "text": {
-                            "type": "string"
-                          },
-                          "html": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
                             "type": "string"
                           }
                         }
+                      ]
+                    },
+                    "description": "All email headers"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "description": "Plain text body"
+                      },
+                      "html": {
+                        "type": "string",
+                        "description": "HTML body"
+                      }
+                    }
+                  },
+                  "size": {
+                    "type": "number",
+                    "description": "Message size in bytes"
+                  },
+                  "timestamp": {
+                    "type": "number",
+                    "description": "Unix timestamp when received"
+                  },
+                  "spf": {
+                    "type": "object",
+                    "properties": {
+                      "result": {
+                        "type": "string",
+                        "enum": [
+                          "pass",
+                          "fail",
+                          "softfail",
+                          "neutral",
+                          "temperror",
+                          "permerror",
+                          "none"
+                        ]
+                      },
+                      "domain": {
+                        "type": "string"
                       }
                     },
                     "required": [
-                      "headers"
+                      "result"
                     ]
                   },
-                  "messageId": {
-                    "type": "string"
+                  "dkim": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "result": {
+                          "type": "string",
+                          "enum": [
+                            "pass",
+                            "fail",
+                            "temperror",
+                            "permerror",
+                            "neutral",
+                            "none"
+                          ]
+                        },
+                        "domain": {
+                          "type": "string"
+                        },
+                        "selector": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "result"
+                      ]
+                    }
                   },
-                  "timestamp": {
-                    "type": "number"
+                  "dmarc": {
+                    "type": "object",
+                    "properties": {
+                      "result": {
+                        "type": "string",
+                        "enum": [
+                          "pass",
+                          "fail",
+                          "temperror",
+                          "permerror",
+                          "none"
+                        ]
+                      },
+                      "policy": {
+                        "type": "string",
+                        "enum": [
+                          "none",
+                          "quarantine",
+                          "reject"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "result"
+                    ]
                   }
                 },
                 "required": [
-                  "envelope",
-                  "message"
+                  "messageId",
+                  "sender",
+                  "recipients",
+                  "headers",
+                  "size",
+                  "timestamp"
                 ]
               }
             }
@@ -1164,7 +1234,7 @@
         },
         "responses": {
           "200": {
-            "description": "Stalwart hook response with routing instructions",
+            "description": "Instructions for message handling",
             "content": {
               "application/json": {
                 "schema": {
@@ -1183,19 +1253,56 @@
                       "type": "object",
                       "properties": {
                         "folder": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "IMAP folder to store message"
                         },
                         "headers": {
                           "type": "object",
                           "additionalProperties": {
                             "type": "string"
                           }
+                        },
+                        "subject": {
+                          "type": "string"
                         }
                       }
+                    },
+                    "reject_reason": {
+                      "type": "string"
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
                     }
                   },
                   "required": [
                     "action"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error - default to accept",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "accept"
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "error"
                   ]
                 }
               }
