@@ -3,6 +3,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { DatabaseClient, type MessageInsert, hashEmail } from "./database";
 import type { Ai } from "./message_processor";
+import TurndownService from "turndown";
 
 // Environment variables interface
 interface Env {
@@ -187,7 +188,9 @@ app.openapi(mtaHookRoute, async (c) => {
     );
 
     // Extract actual sender from headers (considering SPF/DKIM)
-    const senderEmail = extractSenderEmail(hookData);
+    const senderResult = extractSenderEmail(hookData);
+    const senderEmail = senderResult.email;
+    const senderFlag = senderResult.flag;
     const senderName = extractSenderName(hookData);
 
     // Process all recipients and ensure they get the same campaign folder
@@ -215,6 +218,7 @@ app.openapi(mtaHookRoute, async (c) => {
           senderName,
           recipientEmail,
           sharedCampaignClassification,
+          senderFlag,
         );
       }),
     );
@@ -241,13 +245,23 @@ app.openapi(mtaHookRoute, async (c) => {
   } catch (error) {
     console.error("MTA Hook processing error:", error);
 
-    // Always accept on error to avoid email loss
+    // Always accept on error to avoid email loss, route to unprocessed
     const errorRes: ErrorResponse = {
       action: "accept",
       error: error instanceof Error ? error.message : "Unknown error",
     };
-    // src/stalwart.ts - Stalwart MTA Hook Worker
-    return c.json<ErrorResponse>(errorRes, 500);
+
+    // Return with folder assignment for fallback
+    return c.json({
+      ...errorRes,
+      modifications: {
+        folder: "unprocessed",
+        headers: {
+          "X-CircularDemocracy-Status": "backend-error",
+          "X-CircularDemocracy-Error": error instanceof Error ? error.message : "Unknown error",
+        },
+      },
+    }, 500);
   }
 });
 
@@ -272,6 +286,7 @@ async function processEmailForRecipient(
   _senderName: string,
   recipientEmail: string,
   sharedCampaignClassification: { campaign_name: string; confidence: number; campaign_id: number } | null,
+  senderFlag?: string,
 ): Promise<StalwartResponse> {
   try {
     // Step 1: Check for duplicate message
@@ -363,12 +378,15 @@ async function processEmailForRecipient(
       received_at: new Date(hookData.timestamp * 1000).toISOString(),
       duplicate_rank: duplicateRank,
       processing_status: "processed",
+      sender_flag: senderFlag,
+      is_reply: detectIfReply(hookData),
     };
 
     await db.insertMessage(messageData);
 
     // Step 7: Generate folder and response
-    const folderName = generateFolderName(classification, duplicateRank);
+    const isReply = detectIfReply(hookData);
+    const folderName = generateFolderName(classification, duplicateRank, isReply);
 
     return {
       action: "accept" as const,
@@ -392,7 +410,7 @@ async function processEmailForRecipient(
       action: "accept" as const,
       confidence: 0.0,
       modifications: {
-        folder: "System/ProcessingError",
+        folder: "unprocessed",
         headers: {
           "X-CircularDemocracy-Status": "error",
           "X-CircularDemocracy-Error":
@@ -409,23 +427,51 @@ async function processEmailForRecipient(
 
 function extractSenderEmail(
   hookData: z.infer<typeof StalwartHookSchema>,
-): string {
+): { email: string; flag?: string } {
   // Priority: Reply-To > From > envelope sender (SPF considerations)
   const replyTo = getHeader(hookData.headers, "reply-to");
-  if (replyTo && isValidEmail(replyTo)) {
-    return replyTo;
-  }
-
   const from = getHeader(hookData.headers, "from");
-  if (from) {
+  const envelopeSender = hookData.sender;
+
+  let senderEmail = envelopeSender;
+  let flag: string | undefined;
+
+  // Check for Reply-To vs From/Envelope discrepancies
+  if (replyTo && isValidEmail(replyTo)) {
+    senderEmail = replyTo;
+
+    // Flag if Reply-To differs from From or Envelope
+    const fromEmail = extractEmailFromHeader(from);
+    if (fromEmail && fromEmail !== replyTo) {
+      flag = "reply_to_mismatch_from";
+      console.log(`Sender flag: Reply-To (${replyTo}) differs from From (${fromEmail})`);
+    }
+    if (envelopeSender && envelopeSender !== replyTo) {
+      flag = "reply_to_mismatch_envelope";
+      console.log(`Sender flag: Reply-To (${replyTo}) differs from envelope (${envelopeSender})`);
+    }
+  } else if (from) {
     const emailMatch = from.match(/<([^>]+)>/) || [null, from];
     const email = emailMatch[1]?.trim();
     if (email && isValidEmail(email)) {
-      return email;
+      senderEmail = email;
+
+      // Flag if From differs from Envelope
+      if (envelopeSender && envelopeSender !== email) {
+        flag = "from_mismatch_envelope";
+        console.log(`Sender flag: From (${email}) differs from envelope (${envelopeSender})`);
+      }
     }
   }
 
-  return hookData.sender;
+  return { email: senderEmail, flag };
+}
+
+function extractEmailFromHeader(header: string | null): string | null {
+  if (!header) return null;
+  const emailMatch = header.match(/<([^>]+)>/) || [null, header];
+  const email = emailMatch[1]?.trim();
+  return email && isValidEmail(email) ? email : null;
 }
 
 function extractSenderName(
@@ -439,7 +485,8 @@ function extractSenderName(
     }
   }
 
-  const email = extractSenderEmail(hookData);
+  const senderResult = extractSenderEmail(hookData);
+  const email = senderResult.email;
   return email.split("@")[0];
 }
 
@@ -469,10 +516,36 @@ function cleanTextContent(text: string): string {
 }
 
 function cleanHtmlContent(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ") // Strip HTML tags
-    .replace(/\s+/g, " ") // Normalize whitespace
-    .trim();
+  try {
+    // Create turndown instance with options for better conversion
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      hr: '---',
+      bulletListMarker: '-',
+      codeBlockStyle: 'fenced',
+      fence: '```',
+      emDelimiter: '*',
+      strongDelimiter: '**',
+      linkStyle: 'inlined',
+      linkReferenceStyle: 'full'
+    });
+
+    // Convert HTML to Markdown
+    const markdown = turndownService.turndown(html);
+
+    // Clean up the markdown result
+    return markdown
+      .replace(/\n{3,}/g, "\n\n") // Normalize excessive newlines
+      .replace(/\s+$/gm, "") // Remove trailing whitespace
+      .trim();
+  } catch (error) {
+    console.error("HTML to Markdown conversion error:", error);
+    // Fallback to basic tag stripping
+    return html
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
 }
 
 function getHeader(
@@ -487,9 +560,31 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function detectIfReply(
+  hookData: z.infer<typeof StalwartHookSchema>,
+): boolean {
+  const subject = hookData.subject || "";
+  const inReplyTo = getHeader(hookData.headers, "in-reply-to");
+  const references = getHeader(hookData.headers, "references");
+
+  // Check for common reply indicators in subject
+  const replyPatterns = /^(re:|fw:|fwd:)/i;
+  if (replyPatterns.test(subject.trim())) {
+    return true;
+  }
+
+  // Check for reply headers
+  if (inReplyTo || references) {
+    return true;
+  }
+
+  return false;
+}
+
 function generateFolderName(
   classification: { campaign_name: string; confidence: number },
   duplicateRank: number,
+  isReply: boolean,
 ): string {
   const campaignFolder = classification.campaign_name
     .replace(/[^a-zA-Z0-9\-_\s]/g, "")
@@ -498,6 +593,10 @@ function generateFolderName(
 
   if (duplicateRank > 0) {
     return `${campaignFolder}/Duplicates`;
+  }
+
+  if (isReply) {
+    return `${campaignFolder}/replied`;
   }
 
   if (classification.confidence < 0.3) {
