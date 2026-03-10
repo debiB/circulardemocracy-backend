@@ -92,7 +92,7 @@ const statsRoute = createRoute({
     },
   },
   tags: ["Campaigns", "Statistics"], // Added Campaigns tag
-  summary: "api/v1/campaigns/stats",
+  summary: "/api/v1/campaigns/stats",
 });
 
 app.openapi(statsRoute, async (c) => {

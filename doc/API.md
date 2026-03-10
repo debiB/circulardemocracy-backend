@@ -10,7 +10,7 @@ API for processing citizen messages to politicians
 
 #### POST
 
-**Summary:** api/v1/messages
+**Summary:** /api/v1/messages
 
 Receives a citizen message, classifies it by campaign, and stores it for politician response
 
@@ -93,7 +93,7 @@ Content-Type: `application/json`
 
 #### GET
 
-**Summary:** api/v1/campaigns/stats
+**Summary:** /api/v1/campaigns/stats
 
 **Responses:**
 

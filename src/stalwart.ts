@@ -3,6 +3,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { DatabaseClient, type MessageInsert, hashEmail } from "./database";
 import type { Ai } from "./message_processor";
+import Turndown from "turndown";
 
 // =============================================================================
 // SENDER FLAG TYPE
@@ -426,6 +427,17 @@ async function processEmailForRecipient(
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
+
+// Create a single Turndown instance for reuse
+const turndownService = new Turndown({
+  headingStyle: "atx",
+  bulletListMarker: "-",
+  codeBlockStyle: "fenced",
+  fence: "```",
+  emDelimiter: "*",
+  strongDelimiter: "**",
+  linkStyle: "inlined"
+});
 
 function extractEmailFromHeader(headerValue: string): string | null {
   const emailMatch = headerValue.match(/<([^>]+)>/) || [null, headerValue];
