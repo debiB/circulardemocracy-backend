@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/serve.ts",
+    "cli": "tsx src/cli/index.ts",
+    "cli:test": "tsx src/cli/test-cli.ts",
     "build": "tsc",
     "wranger:dev": "wrangler dev src/index.ts --local",
     "deploy": "wrangler deploy --minify src/index.ts --env ",
