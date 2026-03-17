@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/serve.ts",
-    "cli": "tsx src/cli/index.ts",
     "cli:test": "tsx src/cli/test-cli.ts",
     "jmap-fetch": "tsx bin/jmap-fetch.ts",
     "mail": "tsx bin/mail.ts",
