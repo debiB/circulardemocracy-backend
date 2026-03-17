@@ -41,6 +41,8 @@ export interface MessageInsert {
   processing_status: string;
   reply_status?: 'pending' | 'scheduled' | 'sent' | null;
   reply_scheduled_at?: string | null;
+  sender_flag?: string;
+  is_reply?: boolean;
 }
 
 export interface ReplyTemplate {

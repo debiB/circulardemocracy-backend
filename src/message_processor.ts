@@ -27,9 +27,13 @@ export interface MessageInput {
   recipient_email: string;
   subject: string;
   message: string;
+  html_content?: string;
+  text_content?: string;
   timestamp: string;
   channel_source?: string;
   campaign_hint?: string;
+  sender_flag?: string;
+  is_reply?: boolean;
 }
 
 export interface MessageProcessingResult {
@@ -95,7 +99,8 @@ export async function processMessage(
   }
 
   // 3. Embedding
-  const embedding = await generateEmbedding(ai, data.message);
+  const textForEmbedding = data.text_content || data.message;
+  const embedding = await generateEmbedding(ai, textForEmbedding);
 
   // 4. Classification
   const classification = await db.classifyMessage(
@@ -144,6 +149,8 @@ export async function processMessage(
     processing_status: "processed",
     reply_status: replySchedule?.reply_status || null,
     reply_scheduled_at: replySchedule?.reply_scheduled_at || null,
+    sender_flag: data.sender_flag,
+    is_reply: data.is_reply,
   };
 
   const messageId = await db.insertMessage(messageData);
