@@ -146,9 +146,9 @@ describe("Stalwart Webhook", () => {
 
       const result = adaptStalwartHookToMessageInput(payload);
 
-      expect(result.messageInput.message).toContain("**version**");
-      expect(result.messageInput.message).toContain("*formatting*");
-      expect(result.messageInput.message).not.toBe("Plain text version");
+      expect(result.messageInput.html_content).toBe("<p>HTML <strong>version</strong> with <em>formatting</em></p>");
+      expect(result.messageInput.text_content).toBe("Plain text version");
+      expect(result.messageInput.message).toBe("Plain text version");
     });
 
     it("should fallback to plain text when HTML is not available", () => {
@@ -192,7 +192,8 @@ describe("Stalwart Webhook", () => {
 
       const result = adaptStalwartHookToMessageInput(payload);
 
-      expect(result.messageInput.message).toBe("[Click here](https://example.com)");
+      expect(result.messageInput.html_content).toBe('<a href="https://example.com">Click here</a>');
+      expect(result.messageInput.message).toBe("");
     });
 
     it("should convert HTML headings to Markdown", () => {
@@ -214,8 +215,9 @@ describe("Stalwart Webhook", () => {
 
       const result = adaptStalwartHookToMessageInput(payload);
 
-      expect(result.messageInput.message).toContain("# Title");
-      expect(result.messageInput.message).toContain("## Subtitle");
+      expect(result.messageInput.html_content).toContain("<h1>Title</h1>");
+      expect(result.messageInput.html_content).toContain("<h2>Subtitle</h2>");
+      expect(result.messageInput.message).toBe("");
     });
 
     it("should generate external_id when messageId is missing", () => {
@@ -334,10 +336,11 @@ describe("Stalwart Webhook", () => {
 
       const result = adaptStalwartHookToMessageInput(payload);
 
-      expect(result.messageInput.message).toContain("&");
-      expect(result.messageInput.message).toContain("<");
-      expect(result.messageInput.message).toContain(">");
-      expect(result.messageInput.message).toContain('"');
+      expect(result.messageInput.html_content).toContain("&amp;");
+      expect(result.messageInput.html_content).toContain("&lt;");
+      expect(result.messageInput.html_content).toContain("&gt;");
+      expect(result.messageInput.html_content).toContain("&quot;");
+      expect(result.messageInput.message).toBe("");
     });
   });
 
