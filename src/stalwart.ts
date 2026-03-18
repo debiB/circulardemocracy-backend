@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { DatabaseClient, type MessageInsert, hashEmail } from "./database";
 import type { Ai } from "./message_processor";
 import Turndown from "turndown";
+import { sendAcknowledgmentEmail, shouldSendAcknowledgment, isAutoReply } from "./acknowledgment_service";
 
 // =============================================================================
 // SENDER FLAG TYPE
@@ -100,6 +101,7 @@ const StalwartResponseSchema = z.object({
     .optional(),
   reject_reason: z.string().optional(),
   confidence: z.number().min(0).max(1).optional(),
+  messageId: z.number().optional().describe("Internal message ID for tracking"),
 });
 
 type StalwartResponse = z.infer<typeof StalwartResponseSchema>;
@@ -241,6 +243,29 @@ app.openapi(mtaHookRoute, async (c) => {
     console.log(
       `Email processed: campaign=${bestResult.modifications?.headers?.["X-CircularDemocracy-Campaign"]}, confidence=${bestResult.confidence}`,
     );
+
+    // Send acknowledgment emails asynchronously for low-confidence messages
+    // Only if this is not already an auto-reply (loop prevention)
+    if (!isAutoReply(hookData.headers)) {
+      for (const result of results) {
+        if (result.messageId && result.confidence !== undefined && shouldSendAcknowledgment(result.confidence)) {
+          // Use Cloudflare Workers waitUntil for async execution
+          c.executionCtx?.waitUntil(
+            sendAcknowledgmentEmail(db, result.messageId)
+              .then((ackResult) => {
+                if (ackResult.success) {
+                  console.log(`[Acknowledgment] Sent for message ${result.messageId}`);
+                } else {
+                  console.error(`[Acknowledgment] Failed for message ${result.messageId}: ${ackResult.error}`);
+                }
+              })
+              .catch((error) => {
+                console.error(`[Acknowledgment] Error for message ${result.messageId}:`, error);
+              })
+          );
+        }
+      }
+    }
 
     return c.json<StalwartResponse>(bestResult);
   } catch (error) {
@@ -388,7 +413,7 @@ async function processEmailForRecipient(
       stalwart_account_id: recipientEmail, // JMAP account is the politician's email
     };
 
-    await db.insertMessage(messageData);
+    const messageId = await db.insertMessage(messageData);
 
     // Step 7: Generate folder and response
     const folderName = generateFolderName(classification, duplicateRank, isReply);
@@ -408,6 +433,7 @@ async function processEmailForRecipient(
           "X-CircularDemocracy-Status": "processed",
         },
       },
+      messageId,
     };
   } catch (error) {
     console.error(`Error processing email for ${recipientEmail}:`, error);

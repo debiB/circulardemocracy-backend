@@ -14,6 +14,9 @@ export interface Politician {
   email: string;
   additional_emails: string[];
   active: boolean;
+  stalwart_username?: string;
+  stalwart_app_password?: string;
+  stalwart_jmap_endpoint?: string;
 }
 
 export interface Campaign {
@@ -21,6 +24,8 @@ export interface Campaign {
   name: string;
   slug: string;
   status: string;
+  technical_email?: string | null;
+  reply_to_email?: string | null;
   reference_vector?: number[];
 }
 
@@ -84,7 +89,7 @@ export class DatabaseClient {
       // First try exact email match
       const { data: exactMatch, error: exactError } = await this.supabase
         .from("politicians")
-        .select("id,name,email,additional_emails,active")
+        .select("id,name,email,additional_emails,active,stalwart_username,stalwart_app_password,stalwart_jmap_endpoint")
         .eq("email", email)
         .eq("active", true);
 
@@ -98,7 +103,7 @@ export class DatabaseClient {
       // Then try additional_emails array search
       const { data: arrayMatch, error: arrayError } = await this.supabase
         .from("politicians")
-        .select("id,name,email,additional_emails,active")
+        .select("id,name,email,additional_emails,active,stalwart_username,stalwart_app_password,stalwart_jmap_endpoint")
         .contains("additional_emails", [email])
         .eq("active", true);
 
@@ -319,6 +324,60 @@ export class DatabaseClient {
       return data.length > 0 ? data[0] : null;
     } catch (error) {
       console.error("Error getting message by external ID:", error);
+      return null;
+    }
+  }
+
+  async getMessageById(messageId: number): Promise<any | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("messages")
+        .select("id, external_id, politician_id, campaign_id, classification_confidence, stalwart_message_id, stalwart_account_id, received_at")
+        .eq("id", messageId)
+        .limit(1);
+
+      if (error) {
+        throw error;
+      }
+      return data.length > 0 ? data[0] : null;
+    } catch (error) {
+      console.error("Error getting message by ID:", error);
+      return null;
+    }
+  }
+
+  async getPoliticianById(politicianId: number): Promise<Politician | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("politicians")
+        .select("id,name,email,additional_emails,active,stalwart_username,stalwart_app_password,stalwart_jmap_endpoint")
+        .eq("id", politicianId)
+        .limit(1);
+
+      if (error) {
+        throw error;
+      }
+      return data.length > 0 ? data[0] : null;
+    } catch (error) {
+      console.error("Error getting politician by ID:", error);
+      return null;
+    }
+  }
+
+  async getCampaignById(campaignId: number): Promise<Campaign | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("campaigns")
+        .select("id,name,slug,status")
+        .eq("id", campaignId)
+        .limit(1);
+
+      if (error) {
+        throw error;
+      }
+      return data.length > 0 ? data[0] : null;
+    } catch (error) {
+      console.error("Error getting campaign by ID:", error);
       return null;
     }
   }
