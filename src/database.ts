@@ -368,6 +368,121 @@ export class DatabaseClient {
       confidence: 0.1,
     };
   }
+
+  // =============================================================================
+  // CAMPAIGN MESSAGE RETRIEVAL
+  // =============================================================================
+
+  async getCampaignMessages(
+    campaignId: number,
+    filters: {
+      page: number;
+      pageSize: number;
+      startDate?: string;
+      endDate?: string;
+      minConfidence?: number;
+      maxConfidence?: number;
+      duplicateStatus?: "original" | "duplicate";
+      search?: string;
+    },
+  ): Promise<{
+    messages: any[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      totalCount: number;
+      totalPages: number;
+      filteredCount: number;
+    };
+    filters: {
+      startDate?: string;
+      endDate?: string;
+      minConfidence?: number;
+      maxConfidence?: number;
+      duplicateStatus?: string;
+      search?: string;
+    };
+  }> {
+    try {
+      // Build query with filters
+      let query = this.supabase
+        .from("messages")
+        .select("*", { count: "exact" })
+        .eq("campaign_id", campaignId);
+
+      // Apply date range filters
+      if (filters.startDate) {
+        query = query.gte("received_at", filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte("received_at", filters.endDate);
+      }
+
+      // Apply confidence range filters
+      if (filters.minConfidence !== undefined) {
+        query = query.gte("classification_confidence", filters.minConfidence);
+      }
+      if (filters.maxConfidence !== undefined) {
+        query = query.lte("classification_confidence", filters.maxConfidence);
+      }
+
+      // Apply duplicate status filter
+      if (filters.duplicateStatus === "original") {
+        query = query.eq("duplicate_rank", 0);
+      } else if (filters.duplicateStatus === "duplicate") {
+        query = query.gt("duplicate_rank", 0);
+      }
+
+      // Apply search filter using ilike pattern (following existing pattern from findCampaignByHint)
+      if (filters.search) {
+        // Search in available text fields (not PII fields which are not stored)
+        query = query.or(
+          `external_id.ilike.*${filters.search}*,channel.ilike.*${filters.search}*,channel_source.ilike.*${filters.search}*,language.ilike.*${filters.search}*,processing_status.ilike.*${filters.search}*`,
+        );
+      }
+
+      // Get total count for this campaign (unfiltered)
+      const { count: totalCount } = await this.supabase
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("campaign_id", campaignId);
+
+      // Apply ordering and pagination
+      const offset = (filters.page - 1) * filters.pageSize;
+      query = query
+        .order("received_at", { ascending: false })
+        .range(offset, offset + filters.pageSize - 1);
+
+      // Execute query
+      const { data, error, count: filteredCount } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        messages: data || [],
+        pagination: {
+          page: filters.page,
+          pageSize: filters.pageSize,
+          totalCount: totalCount || 0,
+          totalPages: Math.ceil((filteredCount || 0) / filters.pageSize),
+          filteredCount: filteredCount || 0,
+        },
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          minConfidence: filters.minConfidence,
+          maxConfidence: filters.maxConfidence,
+          duplicateStatus: filters.duplicateStatus,
+          search: filters.search,
+        },
+      };
+    } catch (error) {
+      console.error("Error getting campaign messages:", error);
+      throw new Error("Failed to retrieve campaign messages");
+    }
+  }
 }
 
 // =============================================================================

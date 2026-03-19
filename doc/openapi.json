@@ -1284,6 +1284,10 @@
                       "type": "number",
                       "minimum": 0,
                       "maximum": 1
+                    },
+                    "messageId": {
+                      "type": "number",
+                      "description": "Internal message ID for tracking"
                     }
                   },
                   "required": [

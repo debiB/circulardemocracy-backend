@@ -42,6 +42,54 @@ const CreateCampaignSchema = z.object({
   description: z.string().optional(),
 });
 
+const MessageSchema = z.object({
+  id: z.number(),
+  external_id: z.string(),
+  channel: z.string(),
+  channel_source: z.string(),
+  politician_id: z.number(),
+  sender_hash: z.string(),
+  campaign_id: z.number(),
+  classification_confidence: z.number(),
+  language: z.string(),
+  received_at: z.string(),
+  processed_at: z.string(),
+  duplicate_rank: z.number(),
+  processing_status: z.string(),
+  stalwart_message_id: z.string().nullable(),
+  stalwart_account_id: z.string().nullable(),
+});
+
+const GetMessagesQuerySchema = z.object({
+  page: z.string().regex(/^\d+$/).optional().default("1"),
+  pageSize: z.string().regex(/^\d+$/).optional().default("20"),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+  minConfidence: z.string().regex(/^[0-1](\.\d+)?$/).optional(),
+  maxConfidence: z.string().regex(/^[0-1](\.\d+)?$/).optional(),
+  duplicateStatus: z.enum(["original", "duplicate"]).optional(),
+  search: z.string().optional(),
+});
+
+const MessagesResponseSchema = z.object({
+  messages: z.array(MessageSchema),
+  pagination: z.object({
+    page: z.number(),
+    pageSize: z.number(),
+    totalCount: z.number(),
+    totalPages: z.number(),
+    filteredCount: z.number(),
+  }),
+  filters: z.object({
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    minConfidence: z.number().optional(),
+    maxConfidence: z.number().optional(),
+    duplicateStatus: z.string().optional(),
+    search: z.string().optional(),
+  }),
+});
+
 // =============================================================================
 // ROUTES
 // =============================================================================
@@ -160,6 +208,63 @@ app.openapi(createCampaignRoute, async (c) => {
     body: JSON.stringify(campaignData),
   });
   return c.json(data[0], 201);
+});
+
+// Get Campaign Messages
+const getCampaignMessagesRoute = createRoute({
+  method: "get",
+  path: "/api/v1/campaigns/{id}/messages",
+  security: [{ Bearer: [] }],
+  request: {
+    params: z.object({ id: z.string().regex(/^\d+$/) }),
+    query: GetMessagesQuerySchema,
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: MessagesResponseSchema } },
+      description: "Campaign messages with filters applied",
+    },
+    404: { description: "Campaign not found" },
+  },
+  tags: ["Campaigns", "Messages"],
+});
+
+app.openapi(getCampaignMessagesRoute, async (c) => {
+  const db = c.get("db") as DatabaseClient;
+  const { id } = c.req.valid("param");
+  const query = c.req.valid("query");
+
+  // Verify campaign exists
+  const campaign = await db.request<any[]>(
+    `/campaigns?id=eq.${id}&select=id&limit=1`,
+  );
+  if (!campaign || campaign.length === 0) {
+    return c.json({ error: "Campaign not found" }, 404);
+  }
+
+  // Parse and validate query parameters
+  const page = Number.parseInt(query.page, 10);
+  const pageSize = Number.parseInt(query.pageSize, 10);
+  const minConfidence = query.minConfidence
+    ? Number.parseFloat(query.minConfidence)
+    : undefined;
+  const maxConfidence = query.maxConfidence
+    ? Number.parseFloat(query.maxConfidence)
+    : undefined;
+
+  // Get filtered messages
+  const result = await db.getCampaignMessages(Number.parseInt(id, 10), {
+    page,
+    pageSize,
+    startDate: query.startDate,
+    endDate: query.endDate,
+    minConfidence,
+    maxConfidence,
+    duplicateStatus: query.duplicateStatus,
+    search: query.search,
+  });
+
+  return c.json(result);
 });
 
 export default app;
