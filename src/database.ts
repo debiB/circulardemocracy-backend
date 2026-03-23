@@ -63,6 +63,10 @@ export class DatabaseClient {
     });
   }
 
+  getSupabaseClient(): SupabaseClient {
+    return this.supabase;
+  }
+
   async request<T>(endpoint: string, _options: RequestInit = {}): Promise<T> {
     const query = this.supabase.from(endpoint).select("*");
 

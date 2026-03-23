@@ -43,11 +43,18 @@ const CreateReplyTemplateSchema = z.object({
 // ROUTES
 // =============================================================================
 
+const QuerySchema = z.object({
+  campaign_id: z.string().optional(),
+});
+
 // List Reply Templates
 const listReplyTemplatesRoute = createRoute({
   method: "get",
   path: "/api/v1/reply-templates",
   security: [{ Bearer: [] }],
+  request: {
+    query: QuerySchema,
+  },
   responses: {
     200: {
       content: { "application/json": { schema: z.array(ReplyTemplateSchema) } },
@@ -59,8 +66,25 @@ const listReplyTemplatesRoute = createRoute({
 
 app.openapi(listReplyTemplatesRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
-  const data = await db.request<any[]>("/reply_templates?select=*");
-  return c.json(data);
+  const query = c.req.valid("query");
+
+  // Use the Supabase client directly for better query support
+  const supabase = db.getSupabaseClient();
+  let supabaseQuery = supabase.from("reply_templates").select("*");
+
+  // Filter by campaign_id if provided
+  if (query?.campaign_id) {
+    supabaseQuery = supabaseQuery.eq("campaign_id", parseInt(query.campaign_id));
+  }
+
+  const { data, error } = await supabaseQuery;
+
+  if (error) {
+    console.error("Database error:", error);
+    return c.json({ error: error.message }, 400);
+  }
+
+  return c.json(data || []);
 });
 
 // Get Single Reply Template
@@ -115,11 +139,72 @@ const createReplyTemplateRoute = createRoute({
 app.openapi(createReplyTemplateRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
   const templateData = c.req.valid("json");
-  const data = await db.request<any[]>("/reply_templates", {
-    method: "POST",
-    body: JSON.stringify(templateData),
-  });
-  return c.json(data[0], 201);
+
+  // Use the Supabase client directly for POST operations
+  const supabase = db.getSupabaseClient();
+  const { data, error } = await supabase
+    .from("reply_templates")
+    .insert(templateData)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Database error:", error);
+    return c.json({ error: error.message }, 400);
+  }
+
+  if (!data) {
+    return c.json({ error: "Failed to create template" }, 500);
+  }
+
+  return c.json(data, 201);
+});
+
+// Update Reply Template
+const updateReplyTemplateRoute = createRoute({
+  method: "put",
+  path: "/api/v1/reply-templates/{id}",
+  security: [{ Bearer: [] }],
+  request: {
+    params: z.object({ id: z.string().regex(/^\\d+$/) }),
+    body: {
+      content: { "application/json": { schema: CreateReplyTemplateSchema.partial() } },
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: ReplyTemplateSchema } },
+      description: "The updated reply template",
+    },
+    404: { description: "Reply template not found" },
+  },
+  tags: ["Reply Templates"],
+});
+
+app.openapi(updateReplyTemplateRoute, async (c) => {
+  const db = c.get("db") as DatabaseClient;
+  const { id } = c.req.valid("param");
+  const updateData = c.req.valid("json");
+
+  // Use the Supabase client directly for PUT operations
+  const supabase = db.getSupabaseClient();
+  const { data, error } = await supabase
+    .from("reply_templates")
+    .update(updateData)
+    .eq("id", parseInt(id))
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Database error:", error);
+    return c.json({ error: error.message }, 400);
+  }
+
+  if (!data) {
+    return c.json({ error: "Template not found" }, 404);
+  }
+
+  return c.json(data, 200);
 });
 
 export default app;
