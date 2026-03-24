@@ -148,12 +148,12 @@ export async function processMessage(
     received_at: data.timestamp,
     duplicate_rank: duplicateRank,
     processing_status: "processed",
+    reply_status: replySchedule?.reply_status || null,
+    reply_scheduled_at: replySchedule?.reply_scheduled_at || null,
     sender_flag: data.sender_flag,
     is_reply: data.is_reply,
     stalwart_message_id: undefined,
     stalwart_account_id: undefined,
-    reply_status: replySchedule?.reply_status || null,
-    reply_scheduled_at: replySchedule?.reply_scheduled_at || null,
   };
 
   const messageId = await db.insertMessage(messageData);
