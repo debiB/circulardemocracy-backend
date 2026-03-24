@@ -6,6 +6,7 @@ import {
   hashEmail,
 } from "./database";
 import { calculateReplySchedule } from "./scheduling";
+import { generateEmbedding } from "./embedding_service";
 
 export class PoliticianNotFoundError extends Error {
   constructor(email: string) {
@@ -127,7 +128,7 @@ export async function processMessage(
 
     if (activeTemplate) {
       replySchedule = calculateReplySchedule(
-        activeTemplate.send_timing,
+        activeTemplate.send_timing as "immediate" | "office_hours" | "scheduled",
         activeTemplate.scheduled_for,
         data.timestamp,
       );
@@ -189,17 +190,4 @@ export async function processMessage(
     reply_scheduled_at: replySchedule?.reply_scheduled_at || null,
     send_immediately: replySchedule?.send_immediately || false,
   };
-}
-
-async function generateEmbedding(ai: Ai, text: string): Promise<number[]> {
-  try {
-    const response = await ai.run("@cf/baai/bge-m3", {
-      text: text.substring(0, 8000), // Limit to avoid token limits
-    });
-
-    return response.data[0] as number[];
-  } catch (error) {
-    console.error("Embedding generation error:", error);
-    throw new Error("Failed to generate message embedding");
-  }
 }

@@ -39,12 +39,12 @@ export interface MessageInsert {
   received_at: string;
   duplicate_rank: number;
   processing_status: string;
+  reply_status?: "pending" | "scheduled" | null;
+  reply_scheduled_at?: string | null;
   sender_flag?: string;
   is_reply?: boolean;
   stalwart_message_id?: string;
   stalwart_account_id?: string;
-  reply_status?: 'pending' | 'scheduled' | 'sent' | null;
-  reply_scheduled_at?: string | null;
 }
 
 export interface ReplyTemplate {
@@ -443,7 +443,7 @@ export class DatabaseClient {
       if (error) {
         throw error;
       }
-      return data.length > 0 ? data[0] : null;
+      return data && data.length > 0 ? data[0] : null;
     } catch (error) {
       console.error("Error getting active template:", error);
       return null;
@@ -588,7 +588,7 @@ export class DatabaseClient {
   async storeSenderEmail(
     messageId: number,
     senderHash: string,
-    email: string,
+    senderEmail: string,
   ): Promise<void> {
     try {
       const { error } = await this.supabase
@@ -596,7 +596,7 @@ export class DatabaseClient {
         .insert({
           message_id: messageId,
           sender_hash: senderHash,
-          email: email,
+          email: senderEmail,
         });
 
       if (error) {

@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import app from "../src/api";
 import { PoliticianNotFoundError } from "../src/message_processor";
 
+// Mock the embedding service to avoid ONNX runtime errors
+vi.mock("../src/embedding_service", () => ({
+  generateEmbedding: vi.fn().mockResolvedValue(new Array(1024).fill(0.1)),
+}));
+
 // --- Create a singleton mock instance ---
 const mockDbInstance = {
   request: vi.fn(),
