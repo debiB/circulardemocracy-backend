@@ -9,7 +9,7 @@
     "jmap-fetch": "tsx bin/jmap-fetch.ts",
     "mail": "tsx bin/mail.ts",
     "build": "tsc",
-    "wranger:dev": "wrangler dev src/index.ts --local",
+    "wrangler:dev": "wrangler dev src/index.ts --local",
     "deploy": "wrangler deploy --minify src/index.ts --env ",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -31,9 +31,7 @@
     "db:diff": "supabase db diff -f",
     "functions:deploy": "supabase functions deploy",
     "functions:deploy:user-sync": "supabase functions deploy user-sync --no-verify-jwt",
-    "model:preload": "tsx scripts/preload-model.ts",
-    "campaigns:create-test": "tsx scripts/create-test-campaigns.ts",
-    "test:bge-validation": "tsx test/consolidated_bge_m3_validation.test.ts"
+    "model:preload": "tsx scripts/preload-model.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "^0.8.0",
