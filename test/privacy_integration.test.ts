@@ -319,7 +319,7 @@ describe("Privacy-First Integration Tests", () => {
             name: "Education Reform",
             slug: "education-reform",
             status: "active",
-            similarity: 0.95,
+            distance: 0.05,
           },
         ])
       );

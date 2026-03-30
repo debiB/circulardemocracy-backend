@@ -119,7 +119,7 @@ describe("DatabaseClient", () => {
         name: "Environmental Policy",
         slug: "environmental-policy",
         status: "active",
-        similarity: 0.8,
+        distance: 0.05, // Distance <= 0.1 threshold
       };
 
       mockFetch
@@ -131,7 +131,7 @@ describe("DatabaseClient", () => {
       expect(result).toEqual({
         campaign_id: 2,
         campaign_name: "Environmental Policy",
-        confidence: 0.8,
+        confidence: 0.95, // 1 - distance = 1 - 0.05 = 0.95
       });
     });
 

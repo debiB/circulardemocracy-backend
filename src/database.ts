@@ -222,13 +222,13 @@ export class DatabaseClient {
   async findSimilarCampaigns(
     embedding: number[],
     limit = 3,
-  ): Promise<Array<Campaign & { similarity: number }>> {
+  ): Promise<Array<Campaign & { distance: number }>> {
     try {
       const { data, error } = await this.supabase.rpc(
         "find_similar_campaigns",
         {
           query_embedding: embedding,
-          similarity_threshold: 0.1,
+          distance_threshold: 0.1,
           match_limit: limit,
         },
       );
@@ -251,7 +251,7 @@ export class DatabaseClient {
       if (fallbackError) {
         throw fallbackError;
       }
-      return fallback.map((camp) => ({ ...camp, similarity: 0.1 }));
+      return fallback.map((camp) => ({ ...camp, distance: 0.1 }));
     }
   }
 
@@ -297,11 +297,9 @@ export class DatabaseClient {
 
   private static readonly MIN_CLUSTER_SIZE_FOR_CAMPAIGN = 2;
 
-  private async acquireClusteringLock(politicianId: number): Promise<boolean> {
+  private async acquireGlobalClusteringLock(): Promise<boolean> {
     try {
-      const { data, error } = await this.supabase.rpc('acquire_clustering_lock', {
-        lock_key: politicianId
-      });
+      const { data, error } = await this.supabase.rpc('acquire_global_clustering_lock');
 
       if (error) {
         console.error('Error acquiring advisory lock:', error);
@@ -315,11 +313,9 @@ export class DatabaseClient {
     }
   }
 
-  private async releaseClusteringLock(politicianId: number): Promise<void> {
+  private async releaseGlobalClusteringLock(): Promise<void> {
     try {
-      await this.supabase.rpc('release_clustering_lock', {
-        lock_key: politicianId
-      });
+      await this.supabase.rpc('release_global_clustering_lock');
     } catch (error) {
       console.error('Error releasing advisory lock:', error);
     }
@@ -327,16 +323,14 @@ export class DatabaseClient {
 
   async findSimilarMessages(
     embedding: number[],
-    politicianId: number,
     limit = 10,
-  ): Promise<Array<{ id: number; distance: number; campaign_id: number | null }>> {
+  ): Promise<Array<{ id: number; distance: number; campaign_id: number | null; cluster_id: number | null; politician_id: number }>> {
     try {
       const { data, error } = await this.supabase.rpc(
-        "find_similar_messages",
+        "find_similar_messages_global",
         {
           query_embedding: embedding,
-          politician_id_filter: politicianId,
-          distance_threshold: 0.2,
+          distance_threshold: 0.1,
           match_limit: limit,
         },
       );
@@ -357,74 +351,121 @@ export class DatabaseClient {
     }
   }
 
+  async findSimilarClusters(
+    embedding: number[],
+    limit = 10,
+  ): Promise<Array<{ clusterId: number; distance: number; messageCount: number }>> {
+    try {
+      const { data, error } = await this.supabase.rpc("find_similar_clusters", {
+        query_embedding: embedding,
+        distance_threshold: 0.1,
+        match_limit: limit,
+      });
+
+      if (error) {
+        console.error("RPC error finding similar clusters:", error);
+        throw error;
+      }
+
+      return (data || []).map((cluster: any) => ({
+        clusterId: cluster.id,
+        distance: cluster.distance,
+        messageCount: cluster.message_count,
+      }));
+    } catch (error) {
+      console.error("Error finding similar clusters:", error);
+      return [];
+    }
+  }
+
   async assignMessageToCluster(
     messageId: number,
     embedding: number[],
     politicianId: number,
   ): Promise<number | null> {
-    const lockAcquired = await this.acquireClusteringLock(politicianId);
+    const lockAcquired = await this.acquireGlobalClusteringLock();
 
     if (!lockAcquired) {
-      console.log(`  ⏳ Could not acquire lock for politician ${politicianId}, retrying...`);
+      console.log(`  ⏳ Could not acquire global clustering lock, retrying...`);
       await new Promise(resolve => setTimeout(resolve, 100));
       return this.assignMessageToCluster(messageId, embedding, politicianId);
     }
 
     try {
-      const similarMessages = await this.findSimilarMessages(embedding, politicianId, 50);
-      const otherMessages = similarMessages.filter(m => m.id !== messageId);
+      const similarClusters = await this.findSimilarClusters(embedding, 50);
 
-      console.log(`  🔍 Found ${otherMessages.length} similar messages (excluding self)`);
-      if (otherMessages.length > 0) {
-        console.log(`  🔍 Closest distances: ${otherMessages.slice(0, 3).map(m => m.distance.toFixed(4)).join(', ')}`);
+      if (similarClusters.length > 0) {
+        const selectedCluster = [...similarClusters]
+          .sort((a, b) => {
+            // Primary: Closest distance first
+            if (Math.abs(a.distance - b.distance) > 0.001) {
+              return a.distance - b.distance;
+            }
+            // Secondary: Larger clusters first (only when distances are very similar)
+            return b.messageCount - a.messageCount;
+          })[0];
+
+        console.log(`  ✅ Joining existing cluster ${selectedCluster.clusterId} by centroid (distance: ${selectedCluster.distance.toFixed(4)}, size: ${selectedCluster.messageCount})`);
+
+        await this.supabase
+          .from("messages")
+          .update({ cluster_id: selectedCluster.clusterId })
+          .eq("id", messageId);
+
+        await this.updateClusterCentroid(selectedCluster.clusterId);
+        await this.checkClusterReadiness(selectedCluster.clusterId);
+
+        return selectedCluster.clusterId;
       }
 
-      const closeMatches = otherMessages.filter(m => m.distance < 0.2);
+      console.log(`  🔍 No similar clusters by centroid, checking similar unclustered messages`);
+      const similarMessages = await this.findSimilarMessages(embedding, 50);
+      const closeMatches = similarMessages.filter(
+        m => m.id !== messageId && m.distance < 0.1,
+      );
 
-      if (closeMatches.length > 0) {
-        console.log(`  🔍 ${closeMatches.length} messages within threshold (< 0.2)`);
+      const existingClusterFromCloseMatches = closeMatches.find(
+        m => m.cluster_id !== null,
+      );
 
-        const { data: similarMessagesWithClusters } = await this.supabase
+      if (existingClusterFromCloseMatches?.cluster_id) {
+        const clusterId = existingClusterFromCloseMatches.cluster_id;
+        console.log(`  ✅ Joining existing cluster ${clusterId} via fallback close-match logic`);
+
+        await this.supabase
           .from("messages")
-          .select("id, cluster_id")
-          .in("id", closeMatches.map(m => m.id));
+          .update({ cluster_id: clusterId })
+          .eq("id", messageId);
 
-        const existingCluster = similarMessagesWithClusters?.find(m => m.cluster_id !== null);
+        const unclusteredSimilarMessageIds = closeMatches
+          .filter(m => m.cluster_id === null)
+          .map(m => m.id);
 
-        if (existingCluster?.cluster_id) {
-          console.log(`  ✅ Joining existing cluster ${existingCluster.cluster_id}`);
-          const clusterId = existingCluster.cluster_id;
-
+        if (unclusteredSimilarMessageIds.length > 0) {
+          console.log(`  🔗 Also assigning ${unclusteredSimilarMessageIds.length} unclustered similar messages to cluster ${clusterId}`);
           await this.supabase
             .from("messages")
             .update({ cluster_id: clusterId })
-            .eq("id", messageId);
-
-          const unclusteredSimilarMessages = similarMessagesWithClusters
-            ?.filter(m => m.cluster_id === null && m.id !== messageId)
-            .map(m => m.id) || [];
-
-          if (unclusteredSimilarMessages.length > 0) {
-            console.log(`  🔗 Also assigning ${unclusteredSimilarMessages.length} unclustered similar messages to cluster ${clusterId}`);
-            await this.supabase
-              .from("messages")
-              .update({ cluster_id: clusterId })
-              .in("id", unclusteredSimilarMessages);
-          }
-
-          await this.updateClusterCentroid(clusterId);
-          await this.checkClusterReadiness(clusterId);
-
-          return clusterId;
+            .in("id", unclusteredSimilarMessageIds);
         }
 
-        console.log(`  🆕 Creating cluster for ${closeMatches.length + 1} similar messages`);
+        await this.updateClusterCentroid(clusterId);
+        await this.checkClusterReadiness(clusterId);
+
+        return clusterId;
+      }
+
+      const unclusteredSimilarMessages = closeMatches.filter(
+        m => m.cluster_id === null,
+      );
+
+      if (unclusteredSimilarMessages.length > 0) {
+        console.log(`  🆕 Creating cluster for ${unclusteredSimilarMessages.length + 1} similar unclustered messages`);
         const { data: newCluster, error: createError } = await this.supabase
           .from("message_clusters")
           .insert({
-            politician_id: politicianId,
             centroid_vector: `[${embedding.join(',')}]`,
-            message_count: closeMatches.length + 1,
+            message_count: unclusteredSimilarMessages.length + 1,
             status: "forming",
           })
           .select("id")
@@ -436,7 +477,7 @@ export class DatabaseClient {
         }
 
         const newClusterId = newCluster.id;
-        const allMessageIds = [messageId, ...closeMatches.map(m => m.id)];
+        const allMessageIds = [messageId, ...unclusteredSimilarMessages.map(m => m.id)];
 
         await this.supabase
           .from("messages")
@@ -449,11 +490,10 @@ export class DatabaseClient {
         return newClusterId;
       }
 
-      console.log(`  🆕 Creating isolated cluster (no similar messages)`);
+      console.log(`  🆕 Creating isolated cluster (no similar clusters or messages)`);
       const { data: newCluster, error: createError } = await this.supabase
         .from("message_clusters")
         .insert({
-          politician_id: politicianId,
           centroid_vector: `[${embedding.join(',')}]`,
           message_count: 1,
           status: "forming",
@@ -478,7 +518,7 @@ export class DatabaseClient {
       console.error("Error in assignMessageToCluster:", error);
       return null;
     } finally {
-      await this.releaseClusteringLock(politicianId);
+      await this.releaseGlobalClusteringLock();
     }
   }
 
@@ -1073,12 +1113,12 @@ export class DatabaseClient {
     if (similarCampaigns.length > 0) {
       const best = similarCampaigns[0];
 
-      // If similarity is high enough, use existing campaign
-      if (best.similarity > 0.7) {
+      // If distance is low enough, use existing campaign
+      if (best.distance <= 0.1) {
         return {
           campaign_id: best.id,
           campaign_name: best.name,
-          confidence: best.similarity,
+          confidence: 1 - best.distance,
         };
       }
     }

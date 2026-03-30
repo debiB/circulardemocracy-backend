@@ -73,7 +73,7 @@ describe("Stalwart API (/mta-hook)", () => {
 
     // Mock the fetch calls in the correct order based on actual execution
     // 1. findSimilarCampaigns (called by classifyMessage) -> found a match
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     // 2. findPoliticianByEmail -> found
     mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 1, name: "Test Politician" }]));
     // 3. checkExternalIdExists -> not a duplicate
@@ -136,7 +136,7 @@ describe("Stalwart API (/mta-hook)", () => {
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
 
     // 1. classifyMessage (shared) -> found
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     // 2. checkExternalIdExists -> DUPLICATE FOUND
     mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 999 }]));
 
@@ -225,7 +225,7 @@ describe("Stalwart API (/mta-hook)", () => {
     // Mock AI embedding for shared classification
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
     // 1. classifyMessage (shared)
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     // 2. checkExternalIdExists -> not duplicate
     mockFetch.mockResolvedValueOnce(createMockResponse([]));
     // 3. findPoliticianByEmail -> found
@@ -260,7 +260,7 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should fallback to plain text when HTML is not available", async () => {
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     mockFetch.mockResolvedValueOnce(createMockResponse([]));
     mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 1, name: "Test Politician" }]));
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
@@ -282,7 +282,7 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should route reply emails to [campaign]/replied folder", async () => {
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     mockFetch.mockResolvedValueOnce(createMockResponse([]));
     mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 1, name: "Test Politician" }]));
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
@@ -313,7 +313,7 @@ describe("Stalwart API (/mta-hook)", () => {
 
   it("should store sender_flag in insertMessage when Reply-To differs", async () => {
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     mockFetch.mockResolvedValueOnce(createMockResponse([]));
     mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 1, name: "Test Politician" }]));
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
@@ -348,7 +348,7 @@ describe("Stalwart API (/mta-hook)", () => {
   it("should fail-open and accept email when a backend error occurs during processing", async () => {
     env.AI.run.mockResolvedValueOnce({ data: [new Array(1024).fill(0.2)] });
     // classifyMessage (shared) -> success
-    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]));
+    mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]));
     // checkExternalIdExists -> not duplicate
     mockFetch.mockResolvedValueOnce(createMockResponse([]));
     // findPoliticianByEmail -> found
@@ -384,7 +384,7 @@ describe("Stalwart API (/mta-hook)", () => {
       const urlStr = url instanceof Request ? url.url : url.toString();
       // classifyMessage RPC
       if (urlStr.includes("find_similar_campaigns")) {
-        return createMockResponse([{ id: 10, name: "Test Campaign", similarity: 0.8 }]);
+        return createMockResponse([{ id: 10, name: "Test Campaign", distance: 0.05 }]);
       }
       // getDuplicateRank uses HEAD with count=exact
       if (options?.method === "HEAD") {
