@@ -37,7 +37,7 @@
           "Analytics"
         ],
         "summary": "/api/v1/messages/analytics",
-        "description": "Retrieve message analytics showing hourly message counts grouped by campaign for the last N days (default: 7 days)",
+        "description": "Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)",
         "parameters": [
           {
             "schema": {
