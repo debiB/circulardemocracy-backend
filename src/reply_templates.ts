@@ -30,7 +30,7 @@ const ReplyTemplateSchema = z.object({
   campaign_id: z.number(),
   name: z.string(),
   subject: z.string(),
-  message_body: z.string().describe("Markdown formatted email body"),
+  body: z.string().describe("Markdown formatted email body"),
   active: z.boolean(),
   layout_type: z.enum(["text_only", "standard_header"]),
   send_timing: z.enum(["immediate", "office_hours", "scheduled"]),
@@ -43,7 +43,7 @@ const CreateReplyTemplateSchema = z.object({
   campaign_id: z.number(),
   name: z.string().min(3, "Name must be at least 3 characters"),
   subject: z.string().min(1, "Subject is required").max(255),
-  message_body: z.string().min(10, "Message body must be at least 10 characters"),
+  body: z.string().min(10, "Message body must be at least 10 characters"),
   layout_type: z.enum(["text_only", "standard_header"]).default("standard_header"),
   send_timing: z.enum(["immediate", "office_hours", "scheduled"]).default("office_hours"),
   scheduled_for: z.string().datetime().optional(),
@@ -53,7 +53,7 @@ const CreateReplyTemplateSchema = z.object({
 const UpdateReplyTemplateSchema = z.object({
   name: z.string().min(3).optional(),
   subject: z.string().min(1).max(255).optional(),
-  message_body: z.string().min(10).optional(),
+  body: z.string().min(10).optional(),
   layout_type: z.enum(["text_only", "standard_header"]).optional(),
   send_timing: z.enum(["immediate", "office_hours", "scheduled"]).optional(),
   scheduled_for: z.string().datetime().optional(),
@@ -61,10 +61,7 @@ const UpdateReplyTemplateSchema = z.object({
 });
 
 function toApiTemplate(template: any) {
-  return {
-    ...template,
-    message_body: template.body,
-  };
+  return template;
 }
 
 // =============================================================================
@@ -101,7 +98,7 @@ const getReplyTemplateRoute = createRoute({
   description: "Retrieve detailed information about a specific campaign auto-reply template.",
   security: [{ Bearer: [] }],
   request: {
-    params: z.object({ id: z.string().regex(/^\\d+$/).describe("Template ID") }),
+    params: z.object({ id: z.string().regex(/^\d+$/).describe("Template ID") }),
   },
   responses: {
     200: {
@@ -152,11 +149,7 @@ const createReplyTemplateRoute = createRoute({
 
 app.openapi(createReplyTemplateRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
-  const templateDataInput = c.req.valid("json");
-  const templateData = {
-    ...templateDataInput,
-    body: templateDataInput.message_body,
-  };
+  const templateData = c.req.valid("json");
 
   const result = await createReplyTemplate(db, templateData);
 
@@ -207,13 +200,7 @@ app.openapi(updateReplyTemplateRoute, async (c) => {
   const updatesInput = c.req.valid("json");
   const templateId = Number.parseInt(id);
 
-  const updates: Record<string, unknown> = { ...updatesInput };
-  if (updatesInput.message_body !== undefined) {
-    updates.body = updatesInput.message_body;
-    delete updates.message_body;
-  }
-
-  const result = await updateTemplateService(db, templateId, updates);
+  const result = await updateTemplateService(db, templateId, updatesInput);
 
   if (!result.success) {
     const notFoundError = result.errors.find((e) => e.field === "id");
