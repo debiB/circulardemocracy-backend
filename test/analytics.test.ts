@@ -83,7 +83,8 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    const mockAnalytics = [
+    // Mock hourly data from database
+    const mockHourlyAnalytics = [
       {
         hour: "2026-03-31T10:00:00Z",
         campaign_id: 1,
@@ -104,7 +105,23 @@ describe("Analytics API Integration", () => {
       },
     ];
 
-    mockDbInstance.getMessageAnalytics.mockResolvedValue(mockAnalytics);
+    // Expected daily aggregated response from API
+    const expectedDailyAnalytics = [
+      {
+        date: "2026-03-31",
+        campaign_id: 1,
+        campaign_name: "Climate Action",
+        message_count: 38, // 15 + 23
+      },
+      {
+        date: "2026-03-31",
+        campaign_id: 2,
+        campaign_name: "Healthcare Reform",
+        message_count: 8,
+      },
+    ];
+
+    mockDbInstance.getMessageAnalytics.mockResolvedValue(mockHourlyAnalytics);
 
     const req = new Request("http://localhost/api/v1/messages/analytics", {
       method: "GET",
@@ -117,7 +134,7 @@ describe("Analytics API Integration", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     // @ts-ignore
-    expect(body.analytics).toEqual(mockAnalytics);
+    expect(body.analytics).toEqual(expectedDailyAnalytics);
     expect(mockDbInstance.getMessageAnalytics).toHaveBeenCalledWith(7);
   });
 
@@ -128,7 +145,8 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    const mockAnalytics = [
+    // Mock hourly data from database
+    const mockHourlyAnalytics = [
       {
         hour: "2026-03-30T14:00:00Z",
         campaign_id: 3,
@@ -137,7 +155,17 @@ describe("Analytics API Integration", () => {
       },
     ];
 
-    mockDbInstance.getMessageAnalytics.mockResolvedValue(mockAnalytics);
+    // Expected daily aggregated response from API
+    const expectedDailyAnalytics = [
+      {
+        date: "2026-03-30",
+        campaign_id: 3,
+        campaign_name: "Education Funding",
+        message_count: 42,
+      },
+    ];
+
+    mockDbInstance.getMessageAnalytics.mockResolvedValue(mockHourlyAnalytics);
 
     const req = new Request("http://localhost/api/v1/messages/analytics?days=14", {
       method: "GET",
@@ -150,7 +178,7 @@ describe("Analytics API Integration", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     // @ts-ignore
-    expect(body.analytics).toEqual(mockAnalytics);
+    expect(body.analytics).toEqual(expectedDailyAnalytics);
     expect(mockDbInstance.getMessageAnalytics).toHaveBeenCalledWith(14);
   });
 

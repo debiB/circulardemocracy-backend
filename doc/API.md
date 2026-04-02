@@ -12,7 +12,7 @@ API for processing citizen messages to politicians
 
 **Summary:** /api/v1/messages/analytics
 
-Retrieve message analytics showing hourly message counts grouped by campaign for the last N days (default: 7 days)
+Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)
 
 **Parameters:**
 
