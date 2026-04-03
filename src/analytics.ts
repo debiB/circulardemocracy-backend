@@ -81,44 +81,7 @@ app.openapi(getMessageAnalyticsRoute, async (c) => {
     const { days } = c.req.valid("query");
     const daysBack = parseInt(days, 10);
 
-    // Get hourly data from database
-    const hourlyAnalytics = await db.getMessageAnalytics(daysBack);
-
-    // Aggregate hourly data to daily in the API layer
-    const dailyMap = new Map<string, Map<string, { campaign_id: number; count: number }>>();
-
-    hourlyAnalytics.forEach(item => {
-      // Extract date from hour timestamp
-      const date = item.hour.split('T')[0] || item.hour.split(' ')[0];
-
-      if (!dailyMap.has(date)) {
-        dailyMap.set(date, new Map());
-      }
-
-      const dayData = dailyMap.get(date)!;
-      const existing = dayData.get(item.campaign_name);
-
-      if (existing) {
-        existing.count += item.message_count;
-      } else {
-        dayData.set(item.campaign_name, {
-          campaign_id: item.campaign_id,
-          count: item.message_count
-        });
-      }
-    });
-
-    // Convert to array format for response
-    const analytics = Array.from(dailyMap.entries())
-      .flatMap(([date, campaigns]) =>
-        Array.from(campaigns.entries()).map(([campaign_name, data]) => ({
-          date,
-          campaign_id: data.campaign_id,
-          campaign_name,
-          message_count: data.count
-        }))
-      )
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const analytics = await db.getMessageAnalyticsDaily(daysBack);
 
     return c.json({ analytics });
   } catch (error) {
