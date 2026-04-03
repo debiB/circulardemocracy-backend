@@ -11,7 +11,7 @@ vi.mock("../src/embedding_service", () => ({
 // --- Create a singleton mock instance ---
 const mockDbInstance = {
   request: vi.fn(),
-  getMessageAnalytics: vi.fn(),
+  getMessageAnalyticsDaily: vi.fn(),
 };
 
 // --- Mock the entire database module ---
@@ -83,35 +83,13 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    // Mock hourly data from database
-    const mockHourlyAnalytics = [
-      {
-        hour: "2026-03-31T10:00:00Z",
-        campaign_id: 1,
-        campaign_name: "Climate Action",
-        message_count: 15,
-      },
-      {
-        hour: "2026-03-31T11:00:00Z",
-        campaign_id: 1,
-        campaign_name: "Climate Action",
-        message_count: 23,
-      },
-      {
-        hour: "2026-03-31T11:00:00Z",
-        campaign_id: 2,
-        campaign_name: "Healthcare Reform",
-        message_count: 8,
-      },
-    ];
-
-    // Expected daily aggregated response from API
-    const expectedDailyAnalytics = [
+    // Mock daily aggregated data from database
+    const mockDailyAnalytics = [
       {
         date: "2026-03-31",
         campaign_id: 1,
         campaign_name: "Climate Action",
-        message_count: 38, // 15 + 23
+        message_count: 38,
       },
       {
         date: "2026-03-31",
@@ -121,7 +99,7 @@ describe("Analytics API Integration", () => {
       },
     ];
 
-    mockDbInstance.getMessageAnalytics.mockResolvedValue(mockHourlyAnalytics);
+    mockDbInstance.getMessageAnalyticsDaily.mockResolvedValue(mockDailyAnalytics);
 
     const req = new Request("http://localhost/api/v1/messages/analytics", {
       method: "GET",
@@ -134,8 +112,8 @@ describe("Analytics API Integration", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     // @ts-ignore
-    expect(body.analytics).toEqual(expectedDailyAnalytics);
-    expect(mockDbInstance.getMessageAnalytics).toHaveBeenCalledWith(7);
+    expect(body.analytics).toEqual(mockDailyAnalytics);
+    expect(mockDbInstance.getMessageAnalyticsDaily).toHaveBeenCalledWith(7);
   });
 
   it("should return 200 with analytics data using custom days parameter", async () => {
@@ -145,18 +123,8 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    // Mock hourly data from database
-    const mockHourlyAnalytics = [
-      {
-        hour: "2026-03-30T14:00:00Z",
-        campaign_id: 3,
-        campaign_name: "Education Funding",
-        message_count: 42,
-      },
-    ];
-
-    // Expected daily aggregated response from API
-    const expectedDailyAnalytics = [
+    // Mock daily aggregated data from database
+    const mockDailyAnalytics = [
       {
         date: "2026-03-30",
         campaign_id: 3,
@@ -165,7 +133,7 @@ describe("Analytics API Integration", () => {
       },
     ];
 
-    mockDbInstance.getMessageAnalytics.mockResolvedValue(mockHourlyAnalytics);
+    mockDbInstance.getMessageAnalyticsDaily.mockResolvedValue(mockDailyAnalytics);
 
     const req = new Request("http://localhost/api/v1/messages/analytics?days=14", {
       method: "GET",
@@ -178,8 +146,8 @@ describe("Analytics API Integration", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     // @ts-ignore
-    expect(body.analytics).toEqual(expectedDailyAnalytics);
-    expect(mockDbInstance.getMessageAnalytics).toHaveBeenCalledWith(14);
+    expect(body.analytics).toEqual(mockDailyAnalytics);
+    expect(mockDbInstance.getMessageAnalyticsDaily).toHaveBeenCalledWith(14);
   });
 
   it("should return empty array when no analytics data is available", async () => {
@@ -189,7 +157,7 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    mockDbInstance.getMessageAnalytics.mockResolvedValue([]);
+    mockDbInstance.getMessageAnalyticsDaily.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/v1/messages/analytics", {
       method: "GET",
@@ -212,7 +180,7 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    mockDbInstance.getMessageAnalytics.mockRejectedValue(
+    mockDbInstance.getMessageAnalyticsDaily.mockRejectedValue(
       new Error("Database connection failed"),
     );
 
