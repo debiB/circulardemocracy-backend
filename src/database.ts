@@ -1109,6 +1109,25 @@ export class DatabaseClient {
     }
   }
 
+  async getMessageAnalyticsDaily(
+    daysBack = 7,
+  ): Promise<Array<{ date: string; campaign_id: number; campaign_name: string; message_count: number }>> {
+    try {
+      const { data, error } = await this.supabase.rpc("get_message_analytics_daily", {
+        days_back: daysBack,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error fetching daily message analytics:", error);
+      throw new Error("Failed to fetch daily message analytics");
+    }
+  }
+
   // =============================================================================
   // CLASSIFICATION LOGIC
   // =============================================================================
