@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as readline from 'readline';
 import * as path from 'path';
 import * as os from 'os';
+import { spawn } from 'child_process';
 
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'circulardemocracy-cli');
 const CONFIG_PATH = path.join(CACHE_DIR, 'session.json');
@@ -101,6 +102,70 @@ async function logout() {
     fs.unlinkSync(CONFIG_PATH);
   }
   console.log('Logged out.');
+}
+
+async function fetchInbox() {
+  const username = argv.user || process.env.STALWART_USERNAME || 'dibora';
+  const password = argv.password || process.env.STALWART_APP_PASSWORD || process.env.STALWART_PASSWORD;
+
+  if (!password) {
+    console.error('Error: STALWART_APP_PASSWORD environment variable or --password must be set');
+    console.error('Create an app password in Stalwart and export it before running CLI.');
+    process.exit(1);
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error('Error: SUPABASE_URL and SUPABASE_KEY environment variables must be set');
+    process.exit(1);
+  }
+
+  // Build arguments for jmap-fetch
+  const jmapArgs = ['--user', username, '--password', password];
+
+  // Add optional arguments
+  if (argv.since) {
+    jmapArgs.push('--since', argv.since);
+  }
+  if (argv['message-id']) {
+    jmapArgs.push('--message-id', argv['message-id']);
+  }
+  if (argv['process-all']) {
+    jmapArgs.push('--process-all');
+  }
+  if (argv['dry-run']) {
+    jmapArgs.push('--dry-run');
+  }
+  if (argv['move-to-folders']) {
+    jmapArgs.push('--move-to-folders');
+  }
+
+  // Get the directory of the current script
+  const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+  const jmapFetchPath = path.join(scriptDir, 'jmap-fetch.ts');
+
+  console.log('Fetching messages from Stalwart inbox...\n');
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('npx', ['tsx', jmapFetchPath, ...jmapArgs], {
+      stdio: 'inherit',
+      env: { ...process.env }
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`JMAP fetch exited with code ${code}`));
+      }
+    });
+
+    child.on('error', (err) => {
+      reject(err);
+    });
+  });
 }
 
 function loadSession() {
@@ -373,7 +438,12 @@ async function showHelp(filter = '') {
 
   if (!endpoints) {
     console.log(`
-Usage: ./cli <endpoint> [options]
+Usage: ./cli <command|endpoint> [options]
+
+Commands:
+  login            Authenticate with the API
+  logout           Clear stored session
+  fetch-inbox      Pull and classify messages from Stalwart inbox
 
 Arguments:
   <endpoint>    API endpoint path (e.g., campaigns, users/:id)
@@ -386,7 +456,21 @@ Options:
   -v, --version    Show version
   --param=val      Any parameter for the API call
 
+Fetch-Inbox Options:
+  --user <username>      JMAP username (default: STALWART_USERNAME env or "dibora")
+  --password <password>  JMAP app password (default: STALWART_APP_PASSWORD env)
+  --process-all          Fetch all available messages (default when no filter provided)
+  --since <date>         Fetch messages received after date (ISO 8601)
+  --message-id <id>      Fetch one specific message (JMAP ID or Message-ID header)
+  --dry-run              Preview converted messages without processing/storage
+  --move-to-folders      Move messages to classified folders in Stalwart using JMAP
+
 Examples:
+  ./cli login --email=user@example.com --password=mypass
+  ./cli fetch-inbox --process-all
+  ./cli fetch-inbox --since "2024-03-01"
+  ./cli fetch-inbox --since "2024-03-01" --move-to-folders
+  ./cli fetch-inbox --dry-run --since "2024-03-01"
   ./cli campaigns --name=example --status=active
   ./cli campaigns --server=1 --name=example
   ./cli campaigns --server=prod --name=example
@@ -451,6 +535,11 @@ if (command === 'login') {
 
 if (command === 'logout') {
   await logout();
+  process.exit(0);
+}
+
+if (command === 'fetch-inbox') {
+  await fetchInbox();
   process.exit(0);
 }
 

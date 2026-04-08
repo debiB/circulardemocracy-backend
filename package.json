@@ -8,6 +8,7 @@
     "dev": "tsx src/serve.ts",
     "jmap-fetch": "tsx bin/jmap-fetch.ts",
     "mail": "tsx bin/mail.ts",
+    "add-campaign": "tsx bin/add-campaign.ts",
     "build": "tsc",
     "wrangler:dev": "wrangler dev src/index.ts --local",
     "deploy": "wrangler deploy --minify src/index.ts --env ",

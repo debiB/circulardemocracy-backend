@@ -55,6 +55,7 @@ interface StalwartFetchOptions {
   since?: string;
   messageId?: string;
   dryRun: boolean;
+  moveToFolders: boolean;
 }
 
 interface JmapSessionResponse {
@@ -108,6 +109,7 @@ function parseStalwartArgs(args: string[]): StalwartFetchOptions {
   const booleanFlags = new Set([
     "process-all",
     "dry-run",
+    "move-to-folders",
   ]);
 
   for (let i = 0; i < args.length; i++) {
@@ -155,6 +157,7 @@ function parseStalwartArgs(args: string[]): StalwartFetchOptions {
         ? parsed["message-id"]
         : undefined,
     dryRun: parsed["dry-run"] === true,
+    moveToFolders: parsed["move-to-folders"] === true,
   };
 }
 
@@ -172,6 +175,7 @@ OPTIONS:
   --since <date>         Fetch messages received after date (ISO 8601)
   --message-id <id>      Fetch one specific message (JMAP ID or Message-ID header)
   --dry-run              Preview converted messages without processing/storage
+  --move-to-folders      Move messages to classified folders in Stalwart using JMAP
   -h, --help             Show this help message
 
 ENVIRONMENT VARIABLES:
@@ -607,6 +611,121 @@ function toErrorText(error: unknown): string {
   }
 }
 
+async function ensureMailboxExists(
+  apiUrl: string,
+  authHeader: string,
+  accountId: string,
+  folderPath: string,
+): Promise<string> {
+  const parts = folderPath.split('/');
+  let parentId: string | null = null;
+
+  for (const folderName of parts) {
+    if (!folderName) continue;
+
+    // Query for existing mailbox
+    const queryResponses = await jmapCall(apiUrl, authHeader, [
+      [
+        "Mailbox/query",
+        {
+          accountId,
+          filter: {
+            name: folderName,
+            ...(parentId && { parentId }),
+          },
+        },
+        "queryMailbox",
+      ],
+      [
+        "Mailbox/get",
+        {
+          accountId,
+          "#ids": {
+            resultOf: "queryMailbox",
+            name: "Mailbox/query",
+            path: "/ids",
+          },
+        },
+        "getMailbox",
+      ],
+    ]);
+
+    const getData = getMethodResponse(queryResponses, "Mailbox/get", "getMailbox");
+
+    if (Array.isArray(getData.list) && getData.list.length > 0) {
+      parentId = getData.list[0].id;
+    } else {
+      // Create mailbox
+      const createResponses = await jmapCall(apiUrl, authHeader, [
+        [
+          "Mailbox/set",
+          {
+            accountId,
+            create: {
+              newMailbox: {
+                name: folderName,
+                ...(parentId && { parentId }),
+              },
+            },
+          },
+          "createMailbox",
+        ],
+      ]);
+
+      const setData = getMethodResponse(createResponses, "Mailbox/set", "createMailbox");
+      if (setData.created?.newMailbox?.id) {
+        parentId = setData.created.newMailbox.id;
+      } else {
+        throw new Error(`Failed to create mailbox: ${folderName}`);
+      }
+    }
+  }
+
+  if (!parentId) {
+    throw new Error(`Failed to resolve mailbox path: ${folderPath}`);
+  }
+
+  return parentId;
+}
+
+async function moveEmailToMailbox(
+  apiUrl: string,
+  authHeader: string,
+  accountId: string,
+  emailId: string,
+  targetMailboxId: string,
+): Promise<void> {
+  await jmapCall(apiUrl, authHeader, [
+    [
+      "Email/set",
+      {
+        accountId,
+        update: {
+          [emailId]: {
+            mailboxIds: {
+              [targetMailboxId]: true,
+            },
+          },
+        },
+      },
+      "moveEmail",
+    ],
+  ]);
+}
+
+function generateFolderPath(result: any): string {
+  if (!result.campaign_name) {
+    return "Uncategorized/inbox";
+  }
+
+  const campaignFolder = result.campaign_name
+    .replace(/[^a-zA-Z0-9\-_\s]/g, "")
+    .replace(/\s+/g, "-")
+    .substring(0, 50);
+
+  return `${campaignFolder}/inbox`;
+}
+
 function createCliCompatibleDb(db: DatabaseClient): DatabaseClient {
   const rawDb = db as any;
   const supabase = rawDb.supabase;
@@ -758,9 +877,16 @@ async function runStalwartIngestion(
     duplicates: 0,
     politicianNotFound: 0,
     failed: 0,
+    moved: 0,
   };
 
-  for (const messageInput of validMessages) {
+  // Cache for mailbox IDs to avoid repeated lookups
+  const mailboxCache = new Map<string, string>();
+
+  for (let i = 0; i < validMessages.length; i++) {
+    const messageInput = validMessages[i];
+    const rawEmail = rawEmails[i];
+
     try {
       const result = await processMessage(db, ai, messageInput);
       if (result.success) {
@@ -768,9 +894,71 @@ async function runStalwartIngestion(
         console.log(
           `Processed ${messageInput.external_id} -> campaign=${result.campaign_name || "unknown"} confidence=${result.confidence ?? "n/a"}`,
         );
+
+        // Move message to classified folder if option is enabled
+        if (options.moveToFolders && rawEmail?.id) {
+          try {
+            const folderPath = generateFolderPath(result);
+
+            // Check cache first
+            let mailboxId = mailboxCache.get(folderPath);
+            if (!mailboxId) {
+              mailboxId = await ensureMailboxExists(
+                session.apiUrl,
+                authHeader,
+                accountId,
+                folderPath,
+              );
+              mailboxCache.set(folderPath, mailboxId);
+            }
+
+            await moveEmailToMailbox(
+              session.apiUrl,
+              authHeader,
+              accountId,
+              rawEmail.id,
+              mailboxId,
+            );
+
+            summary.moved += 1;
+            console.log(`  → Moved to folder: ${folderPath}`);
+          } catch (moveError) {
+            console.warn(`  ⚠ Failed to move message: ${moveError instanceof Error ? moveError.message : "Unknown error"}`);
+          }
+        }
       } else if (result.status === "duplicate") {
         summary.duplicates += 1;
         console.log(`Duplicate ${messageInput.external_id}`);
+
+        // Move duplicates to appropriate folder too
+        if (options.moveToFolders && rawEmail?.id && result.campaign_name) {
+          try {
+            const folderPath = generateFolderPath(result);
+            let mailboxId = mailboxCache.get(folderPath);
+            if (!mailboxId) {
+              mailboxId = await ensureMailboxExists(
+                session.apiUrl,
+                authHeader,
+                accountId,
+                folderPath,
+              );
+              mailboxCache.set(folderPath, mailboxId);
+            }
+
+            await moveEmailToMailbox(
+              session.apiUrl,
+              authHeader,
+              accountId,
+              rawEmail.id,
+              mailboxId,
+            );
+
+            summary.moved += 1;
+            console.log(`  → Moved to folder: ${folderPath}`);
+          } catch (moveError) {
+            console.warn(`  ⚠ Failed to move duplicate: ${moveError instanceof Error ? moveError.message : "Unknown error"}`);
+          }
+        }
       } else {
         summary.failed += 1;
         console.log(`Failed ${messageInput.external_id}: ${(result.errors || []).join(", ")}`);
@@ -792,6 +980,9 @@ async function runStalwartIngestion(
   console.log(`Duplicates: ${summary.duplicates}`);
   console.log(`Politician not found: ${summary.politicianNotFound}`);
   console.log(`Failed: ${summary.failed}`);
+  if (options.moveToFolders) {
+    console.log(`Moved to folders: ${summary.moved}`);
+  }
 
   return summary.failed === 0;
 }
