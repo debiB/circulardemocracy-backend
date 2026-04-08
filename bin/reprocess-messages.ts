@@ -566,8 +566,11 @@ async function reprocessMessages(
         throw updateError;
       }
 
-      // Only re-assign to cluster if confidence is low (indicating uncategorized)
-      if (classification.confidence < 0.5) {
+      // Get uncategorized campaign to check if we should cluster
+      const uncategorizedCampaign = await db.getUncategorizedCampaign();
+
+      // Only re-assign to cluster if message is assigned to uncategorized campaign
+      if (classification.campaign_id === uncategorizedCampaign.id) {
         try {
           await db.assignMessageToCluster(message.id, embedding, message.politician_id);
         } catch (clusterError) {
