@@ -560,14 +560,16 @@ API Options:
   --param=val      Any parameter for the API call
 
 Examples:
-  ./cli login
-  ./cli add-campaign --name "Climate Action" --text "I urge action on climate change"
-  ./cli update-campaign --id 5 --text "Updated representative text"
-  ./cli update-campaign --id 5 --name "Updated Campaign Name"
-  ./cli update-campaign --id 5 --text "New text" --name "New Campaign Name"
-  ./cli campaigns --name=example --status=active
-  ./cli campaigns/:id --id=123 --name=updated --method=PUT
-  ./cli --list-servers
+  npm run cli -- login
+  npm run cli -- add-campaign --name "Climate Action" --text "I urge action on climate change"
+  npm run cli -- update-campaign --id 5 --text "Updated representative text"
+  npm run cli -- reprocess-messages --process-all
+  npm run cli -- reprocess-messages --campaign-id 5 --limit 100
+  npm run cli -- campaigns --name=example --status=active
+  npm run cli -- campaigns/:id --id=123 --name=updated --method=PUT
+  npm run cli -- --list-servers
+
+Note: Use 'npm run cli -- <command>' to run CLI commands with TypeScript support
 
 Note: Run 'node doc-generator.js help' for endpoint-specific help
 `);
