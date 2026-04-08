@@ -528,6 +528,7 @@ Commands:
   logout                Clear authentication session
   add-campaign          Create a new campaign with embedding
   update-campaign       Update campaign embedding
+  reprocess-messages    Reprocess and reclassify existing messages
   <endpoint>            API endpoint path (e.g., campaigns, users/:id)
 
 Campaign Management:
@@ -536,6 +537,19 @@ Campaign Management:
     
   update-campaign --id <id> [--text <text>] [--name <name>]
     Update campaign embedding and/or name (at least one required)
+
+Message Reprocessing:
+  reprocess-messages [options]
+    Reprocess and reclassify existing messages with updated embeddings
+    Options:
+      --campaign-id <id>    Only reprocess messages for specific campaign
+      --since <date>        Only reprocess messages since date (ISO 8601)
+      --limit <n>           Limit number of messages to process
+      --process-all         Process all messages (default if no filter)
+      --dry-run             Preview without making changes
+      --move-to-folders     Move messages to classified folders in Stalwart
+      --username <user>     JMAP username (default: STALWART_USERNAME env)
+      --password <pass>     JMAP password (default: STALWART_APP_PASSWORD env)
 
 API Options:
   -m, --method     HTTP method (GET, POST, PUT, DELETE) [default: GET]
@@ -623,6 +637,17 @@ if (command === 'add-campaign') {
 
 if (command === 'update-campaign') {
   await updateCampaign();
+  process.exit(0);
+}
+
+if (command === 'reprocess-messages') {
+  const { execSync } = await import('child_process');
+  const args = process.argv.slice(3).join(' ');
+  try {
+    execSync(`npx tsx bin/reprocess-messages.ts ${args}`, { stdio: 'inherit' });
+  } catch (error) {
+    process.exit(1);
+  }
   process.exit(0);
 }
 
