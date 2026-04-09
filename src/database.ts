@@ -1232,6 +1232,35 @@ export class DatabaseClient {
       confidence: 0.1,
     };
   }
+
+  // =============================================================================
+  // ANALYTICS OPERATIONS
+  // =============================================================================
+
+  async getMessageAnalyticsDaily(daysBack: number): Promise<Array<{
+    date: string;
+    campaign_id: number;
+    campaign_name: string;
+    message_count: number;
+  }>> {
+    try {
+      const { data, error } = await this.supabase.rpc(
+        "get_message_analytics_daily",
+        {
+          days_back: daysBack,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error fetching message analytics:", error);
+      return [];
+    }
+  }
 }
 
 // =============================================================================
