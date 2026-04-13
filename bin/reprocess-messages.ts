@@ -4,6 +4,8 @@ import { DatabaseClient } from "../src/database.js";
 import { generateEmbedding, formatEmailContentForEmbedding } from "../src/embedding_service.js";
 import { z } from "zod";
 import Turndown from "turndown";
+import {config as dotenv} from "dotenv";
+dotenv();
 
 interface ReprocessOptions {
   campaignId?: number;
