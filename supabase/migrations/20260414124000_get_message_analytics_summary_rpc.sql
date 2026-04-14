@@ -1,5 +1,5 @@
 -- Cleanup: remove summary RPC in favor of client-side aggregation
--- from message_analytics_view/get_message_analytics_daily rows.
+-- from message_analytics_view rows.
 
 BEGIN;
 
