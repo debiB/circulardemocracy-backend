@@ -167,7 +167,7 @@ const messageRoute = createRoute({
 });
 
 // The handler for the message route
-(app as any).openapi(messageRoute, async (c: any) => {
+app.openapi(messageRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
 
   try {
@@ -192,7 +192,14 @@ const messageRoute = createRoute({
     }
 
     if (!result.success) {
-      return c.json(result, 500);
+      return c.json(
+        {
+          success: false,
+          error: "Message processing failed",
+          details: (result.errors || []).join(", ") || "Unknown processing failure",
+        },
+        500,
+      );
     }
 
     return c.json(result, 200);

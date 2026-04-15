@@ -21,7 +21,7 @@ const LoginSchema = z.object({
 
 const UserSchema = z.object({
   id: z.string(),
-  email: z.string().email(),
+  email: z.string().email().optional(),
   // Add other user fields if you need them in the response
 });
 
@@ -29,7 +29,7 @@ const SessionSchema = z.object({
   access_token: z.string(),
   token_type: z.string(),
   expires_in: z.number(),
-  expires_at: z.number(),
+  expires_at: z.number().optional(),
   refresh_token: z.string(),
   user: UserSchema,
 });
@@ -65,7 +65,7 @@ const loginRoute = createRoute({
   tags: ["Auth"],
 });
 
-(app as any).openapi(loginRoute, async (c: any) => {
+app.openapi(loginRoute, async (c) => {
   const { email, password } = c.req.valid("json");
 
   // Use process.env for Node.js development environment
@@ -73,24 +73,20 @@ const loginRoute = createRoute({
     process.env.SUPABASE_URL || c.env.SUPABASE_URL,
     process.env.SUPABASE_KEY || c.env.SUPABASE_KEY,
   );
-  console.log(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_KEY ? "present" : "missing",
-    email,
-  );
-
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
-  console.log(data, error);
-
   if (error) {
     return c.json({ error: error?.code || "Invalid credentials" }, 401);
   }
 
-  return c.json(data.session);
+  if (!data.session) {
+    return c.json({ error: "Invalid credentials" }, 401);
+  }
+
+  return c.json(data.session, 200);
 });
 
 export default app;

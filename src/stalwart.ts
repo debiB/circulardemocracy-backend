@@ -161,6 +161,17 @@ const mtaHookRoute = createRoute({
       },
       description: "Instructions for message handling",
     },
+    401: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            action: z.literal("reject"),
+            reject_reason: z.string(),
+          }),
+        },
+      },
+      description: "Unauthorized: invalid API key",
+    },
     500: {
       content: {
         "application/json": {
@@ -175,7 +186,7 @@ const mtaHookRoute = createRoute({
   description: "Processes incoming emails and provides routing instructions",
 });
 
-(app as any).openapi(mtaHookRoute, async (c: any) => {
+app.openapi(mtaHookRoute, async (c) => {
   // Authentication check
   const apiKey = c.req.header("X-API-KEY");
   if (!apiKey || apiKey !== c.env.API_KEY) {
@@ -241,7 +252,7 @@ const mtaHookRoute = createRoute({
         confidence: 0,
         reject_reason: "No recipients",
       };
-      return c.json(emptyRes);
+      return c.json(emptyRes, 200);
     }
 
     // Use the result with highest confidence (they should all have same folder now)
@@ -253,7 +264,7 @@ const mtaHookRoute = createRoute({
       `Email processed: campaign=${bestResult.modifications?.headers?.["X-CircularDemocracy-Campaign"]}, confidence=${bestResult.confidence}`,
     );
 
-    return c.json(bestResult);
+    return c.json(bestResult, 200);
   } catch (error) {
     console.error("MTA Hook processing error:", error);
 

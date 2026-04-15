@@ -80,7 +80,7 @@ const getMessageAnalyticsRoute = createRoute({
     "Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)",
 });
 
-(app as any).openapi(getMessageAnalyticsRoute, async (c: any) => {
+app.openapi(getMessageAnalyticsRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
 
   try {
@@ -89,7 +89,7 @@ const getMessageAnalyticsRoute = createRoute({
 
     const analytics = await db.getMessageAnalyticsDaily(daysBack);
 
-    return c.json({ analytics });
+    return c.json({ analytics }, 200);
   } catch (error) {
     console.error("Error fetching message analytics:", error);
     return c.json(

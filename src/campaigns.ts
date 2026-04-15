@@ -60,7 +60,7 @@ const listCampaignsRoute = createRoute({
   tags: ["Campaigns"],
 });
 
-(app as any).openapi(listCampaignsRoute, async (c: any) => {
+app.openapi(listCampaignsRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
   const data = await db.request<any[]>("/campaigns?select=*");
   return c.json(data);
@@ -90,16 +90,33 @@ const statsRoute = createRoute({
       },
       description: "Campaign statistics",
     },
+    500: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.boolean(),
+            error: z.string(),
+          }),
+        },
+      },
+      description: "Failed to fetch statistics",
+    },
   },
   tags: ["Campaigns", "Statistics"], // Added Campaigns tag
   summary: "/api/v1/campaigns/stats",
 });
 
-(app as any).openapi(statsRoute, async (c: any) => {
+app.openapi(statsRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
   try {
-    const stats = await db.request("/rpc/get_campaign_stats");
-    return c.json({ campaigns: stats });
+    const stats = await db.request<Array<{
+      id: number;
+      name: string;
+      message_count: number;
+      recent_count: number;
+      avg_confidence?: number;
+    }>>("/rpc/get_campaign_stats");
+    return c.json({ campaigns: stats }, 200);
   } catch (_error) {
     return c.json({ success: false, error: "Failed to fetch statistics" }, 500);
   }
@@ -123,7 +140,7 @@ const getCampaignRoute = createRoute({
   tags: ["Campaigns"],
 });
 
-(app as any).openapi(getCampaignRoute, async (c: any) => {
+app.openapi(getCampaignRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
   const { id } = c.req.valid("param");
   const data = await db.request<any[]>(
@@ -152,7 +169,7 @@ const createCampaignRoute = createRoute({
   tags: ["Campaigns"],
 });
 
-(app as any).openapi(createCampaignRoute, async (c: any) => {
+app.openapi(createCampaignRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
   const campaignData = c.req.valid("json");
   const data = await db.request<any[]>("/campaigns", {
