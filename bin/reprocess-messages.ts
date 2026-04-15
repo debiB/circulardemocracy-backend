@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { DatabaseClient } from "../src/database.js";
 import { generateEmbedding, formatEmailContentForEmbedding } from "../src/embedding_service.js";

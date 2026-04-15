@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { DatabaseClient } from "../src/database.js";
 import { processMessage, PoliticianNotFoundError, type Ai, type MessageInput } from "../src/message_processor.js";
