@@ -1,10 +1,10 @@
 import {
-  describe,
-  it,
-  expect,
-  vi,
   beforeEach,
+  describe,
+  expect,
+  it,
   type MockedFunction,
+  vi,
 } from "vitest";
 import { DatabaseClient } from "../src/database";
 
@@ -115,7 +115,12 @@ describe("DatabaseClient", () => {
         .mockResolvedValueOnce(createMockResponse([])) // updateCampaignCentroid - get messages
         .mockResolvedValueOnce(createMockResponse(null)); // updateCampaignCentroid - update
 
-      const result = await db.classifyAndAssignToCluster(mockMessageId, mockEmbedding, 1, "climate");
+      const result = await db.classifyAndAssignToCluster(
+        mockMessageId,
+        mockEmbedding,
+        1,
+        "climate",
+      );
 
       expect(result).toEqual({
         campaign_id: 1,
@@ -140,7 +145,12 @@ describe("DatabaseClient", () => {
         .mockResolvedValueOnce(createMockResponse([])) // updateCampaignCentroid - get messages
         .mockResolvedValueOnce(createMockResponse(null)); // updateCampaignCentroid - update
 
-      const result = await db.classifyAndAssignToCluster(mockMessageId, mockEmbedding, 1, "nonexistent");
+      const result = await db.classifyAndAssignToCluster(
+        mockMessageId,
+        mockEmbedding,
+        1,
+        "nonexistent",
+      );
 
       expect(result).toEqual({
         campaign_id: 2,
@@ -151,14 +161,19 @@ describe("DatabaseClient", () => {
 
     it("should attempt cluster assignment when no campaign matches found", async () => {
       // Mock the cluster assignment flow - simplified to test the flow without complex RPC calls
-      const assignToClusterSpy = vi.spyOn(db, "assignMessageToCluster" as any).mockResolvedValue(456);
+      const assignToClusterSpy = vi
+        .spyOn(db, "assignMessageToCluster" as any)
+        .mockResolvedValue(456);
       // Mock updateMessageFields to avoid Supabase issues
       vi.spyOn(db, "updateMessageFields").mockResolvedValue(undefined);
 
-      mockFetch
-        .mockResolvedValueOnce(createMockResponse([])) // findSimilarCampaigns - no matches
+      mockFetch.mockResolvedValueOnce(createMockResponse([])); // findSimilarCampaigns - no matches
 
-      const result = await db.classifyAndAssignToCluster(mockMessageId, mockEmbedding, 1);
+      const result = await db.classifyAndAssignToCluster(
+        mockMessageId,
+        mockEmbedding,
+        1,
+      );
 
       expect(result).toEqual({
         campaign_id: null,
@@ -167,7 +182,11 @@ describe("DatabaseClient", () => {
       });
 
       // Verify cluster assignment was called
-      expect(assignToClusterSpy).toHaveBeenCalledWith(mockMessageId, mockEmbedding, 1);
+      expect(assignToClusterSpy).toHaveBeenCalledWith(
+        mockMessageId,
+        mockEmbedding,
+        1,
+      );
     });
 
     it("should classify correctly when campaign match is found", async () => {
@@ -185,7 +204,11 @@ describe("DatabaseClient", () => {
         .mockResolvedValueOnce(createMockResponse([])) // updateCampaignCentroid - get messages
         .mockResolvedValueOnce(createMockResponse(null)); // updateCampaignCentroid - update
 
-      const result = await db.classifyAndAssignToCluster(mockMessageId, mockEmbedding, 1);
+      const result = await db.classifyAndAssignToCluster(
+        mockMessageId,
+        mockEmbedding,
+        1,
+      );
 
       expect(result).toEqual({
         campaign_id: 3,
@@ -212,7 +235,11 @@ describe("DatabaseClient", () => {
         .mockResolvedValueOnce(createMockResponse([])) // updateCampaignCentroid - get messages
         .mockResolvedValueOnce(createMockResponse(null)); // updateCampaignCentroid - update
 
-      const result = await db.classifyAndAssignToCluster(mockMessageId, mockEmbedding, 1);
+      const result = await db.classifyAndAssignToCluster(
+        mockMessageId,
+        mockEmbedding,
+        1,
+      );
 
       expect(result.campaign_id).toBe(4);
       expect(result.campaign_name).toBe("Healthcare Reform");
@@ -222,7 +249,9 @@ describe("DatabaseClient", () => {
 
   describe("getDuplicateRank", () => {
     it("should return correct duplicate count", async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(null, 200, { "Content-Range": "0-2/3" }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(null, 200, { "Content-Range": "0-2/3" }),
+      );
 
       const result = await db.getDuplicateRank("hash123", 1, 2);
 
@@ -230,7 +259,9 @@ describe("DatabaseClient", () => {
     });
 
     it("should return 0 when no duplicates found", async () => {
-      mockFetch.mockResolvedValueOnce(createMockResponse(null, 200, { "Content-Range": "*/0" }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(null, 200, { "Content-Range": "*/0" }),
+      );
 
       const result = await db.getDuplicateRank("hash123", 1, 2);
 
