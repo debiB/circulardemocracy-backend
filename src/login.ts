@@ -21,8 +21,7 @@ const LoginSchema = z.object({
 
 const UserSchema = z.object({
   id: z.string(),
-  email: z.string().email().optional(),
-  // Add other user fields if you need them in the response
+  email: z.string().email(),
 });
 
 const SessionSchema = z.object({
@@ -61,6 +60,12 @@ const loginRoute = createRoute({
         "application/json": { schema: z.object({ error: z.string() }) },
       },
     },
+    500: {
+      description: "Invalid auth provider response",
+      content: {
+        "application/json": { schema: z.object({ error: z.string() }) },
+      },
+    },
   },
   tags: ["Auth"],
 });
@@ -86,7 +91,25 @@ app.openapi(loginRoute, async (c) => {
     return c.json({ error: "Invalid credentials" }, 401);
   }
 
-  return c.json(data.session, 200);
+  const userEmail = data.session.user.email;
+  if (!userEmail) {
+    return c.json({ error: "Session user email missing" }, 500);
+  }
+
+  return c.json(
+    {
+      access_token: data.session.access_token,
+      token_type: data.session.token_type,
+      expires_in: data.session.expires_in,
+      expires_at: data.session.expires_at,
+      refresh_token: data.session.refresh_token,
+      user: {
+        id: data.session.user.id,
+        email: userEmail,
+      },
+    },
+    200,
+  );
 });
 
 export default app;
