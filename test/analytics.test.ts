@@ -16,7 +16,7 @@ const { mockDbInstance } = vi.hoisted(() => ({
 }));
 
 // --- Mock the entire database module ---
-vi.mock("../src/database.ts", () => ({
+vi.mock("../src/database", () => ({
   DatabaseClient: vi.fn(function MockDatabaseClient() {
     return mockDbInstance;
   }),
@@ -53,7 +53,7 @@ describe("Analytics API Integration", () => {
     vi.clearAllMocks();
     process.env.SUPABASE_URL = env.SUPABASE_URL;
     process.env.SUPABASE_KEY = env.SUPABASE_KEY;
-    const apiModule = await import("../src/api.ts");
+    const apiModule = await import("../src/api");
     app = apiModule.default;
     // Default: mock failed auth
     mockGetUser.mockResolvedValue({
@@ -127,8 +127,7 @@ describe("Analytics API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { analytics: typeof mockDailyAnalytics };
     expect(body.analytics).toEqual(mockDailyAnalytics);
     expect(mockDbInstance.getMessageAnalyticsDaily).toHaveBeenCalledWith(7);
   });
@@ -166,8 +165,7 @@ describe("Analytics API Integration", () => {
     );
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { analytics: typeof mockDailyAnalytics };
     expect(body.analytics).toEqual(mockDailyAnalytics);
     expect(mockDbInstance.getMessageAnalyticsDaily).toHaveBeenCalledWith(14);
   });
@@ -190,8 +188,7 @@ describe("Analytics API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { analytics: unknown[] };
     expect(body.analytics).toEqual([]);
   });
 
@@ -215,10 +212,8 @@ describe("Analytics API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(500);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { success: boolean; error: string };
     expect(body.success).toBe(false);
-    // @ts-expect-error
     expect(body.error).toBe("Failed to fetch message analytics");
   });
 

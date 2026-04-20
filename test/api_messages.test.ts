@@ -25,7 +25,7 @@ const { mockDbInstance } = vi.hoisted(() => ({
 }));
 
 // --- Mock the entire database module ---
-vi.mock("../src/database.ts", () => ({
+vi.mock("../src/database", () => ({
   DatabaseClient: vi.fn(function MockDatabaseClient() {
     return mockDbInstance;
   }),
@@ -69,7 +69,7 @@ describe("Messages API Integration", () => {
     process.env.SUPABASE_KEY = env.SUPABASE_KEY;
     mockDbInstance.upsertSupporter.mockResolvedValue(1);
     mockDbInstance.storeMessageContact.mockResolvedValue(undefined);
-    const apiModule = await import("../src/api.ts");
+    const apiModule = await import("../src/api");
     app = apiModule.default;
   });
 
@@ -112,8 +112,7 @@ describe("Messages API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(404);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { status: string };
     expect(body.status).toBe("politician_not_found");
   });
 
@@ -137,8 +136,7 @@ describe("Messages API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(409);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { status: string };
     expect(body.status).toBe("duplicate");
   });
 
@@ -169,8 +167,9 @@ describe("Messages API Integration", () => {
     mockDbInstance.insertMessage.mockResolvedValue(100);
     mockDbInstance.assignMessageToCluster.mockResolvedValue(1);
     mockDbInstance.storeMessageContact.mockResolvedValue(undefined);
-    // @ts-expect-error
-    env.AI.run.mockResolvedValue({ data: [[0.1, 0.2]] });
+    (env.AI.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [[0.1, 0.2]],
+    });
 
     const req = new Request("http://localhost/api/v1/messages", {
       method: "POST",
@@ -182,10 +181,8 @@ describe("Messages API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    // @ts-expect-error
+    const body = (await res.json()) as { status: string; message_id: number };
     expect(body.status).toBe("processed");
-    // @ts-expect-error
     expect(body.message_id).toBe(100);
   });
 });

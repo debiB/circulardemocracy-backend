@@ -843,12 +843,12 @@ describe("Reply Worker", () => {
         limit: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      vi.spyOn(mockDb.supabase, "from").mockImplementation((table: string) => {
+      vi.spyOn(mockDb.supabase, "from").mockImplementation(((table: string) => {
         if (table === "messages") {
           return messagesById as any;
         }
         return {} as any;
-      });
+      }) as (...args: unknown[]) => unknown);
 
       await expect(
         processReplyImmediately(mockDb, 404, runtimeSecrets),
@@ -929,7 +929,7 @@ describe("Reply Worker", () => {
         }),
       };
 
-      vi.spyOn(mockDb.supabase, "from").mockImplementation((table: string) => {
+      vi.spyOn(mockDb.supabase, "from").mockImplementation(((table: string) => {
         if (table === "messages") {
           return messagesById as any;
         }
@@ -940,7 +940,7 @@ describe("Reply Worker", () => {
           return politiciansTable as any;
         }
         return {} as any;
-      });
+      }) as (...args: unknown[]) => unknown);
 
       vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue({
         id: 1,
