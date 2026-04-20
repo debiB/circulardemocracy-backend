@@ -1,22 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import app from "../src/api";
-import { DatabaseClient } from "../src/database";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the embedding service to avoid ONNX runtime errors
-vi.mock("../src/embedding_service", () => ({
+vi.mock("../src/embedding_service.ts", () => ({
   generateEmbedding: vi.fn().mockResolvedValue(new Array(1024).fill(0.1)),
-  formatEmailContentForEmbedding: vi.fn().mockReturnValue("# Test Subject\n\nTest message body"),
+  formatEmailContentForEmbedding: vi
+    .fn()
+    .mockReturnValue("# Test Subject\n\nTest message body"),
 }));
 
 // --- Create a singleton mock instance ---
 const mockDbInstance = {
   request: vi.fn(),
-  getMessageAnalyticsDaily: vi.fn(),
 };
 
 // --- Mock the entire database module ---
-vi.mock("../src/database", () => ({
-  DatabaseClient: vi.fn(() => mockDbInstance),
+vi.mock("../src/database.ts", () => ({
+  DatabaseClient: vi.fn(function MockDatabaseClient() {
+    return mockDbInstance;
+  }),
 }));
 
 // Mock Supabase client for auth
@@ -47,6 +48,8 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 describe("Analytics API Integration", () => {
+  let app: typeof import("../src/api")["default"];
+
   const env = {
     AI: { run: vi.fn() },
     SUPABASE_URL: "https://test.supabase.co",
@@ -58,11 +61,14 @@ describe("Analytics API Integration", () => {
     JMAP_PASSWORD: "pass",
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.clearAllMocks();
     mockAnalyticsQueryResult.data = [];
     mockAnalyticsQueryResult.error = null;
     mockAnalyticsOrder.mockImplementation(async () => mockAnalyticsQueryResult);
+    const apiModule = await import("../src/api.ts");
+    app = apiModule.default;
     // Default: mock failed auth
     mockGetUser.mockResolvedValue({
       data: { user: null },
@@ -130,7 +136,7 @@ describe("Analytics API Integration", () => {
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
     const body = await res.json();
-    // @ts-ignore
+    // @ts-expect-error
     expect(body.analytics).toEqual(mockDailyAnalytics);
     expect(mockAnalyticsFrom).toHaveBeenCalledWith("message_analytics_view");
   });
@@ -155,17 +161,20 @@ describe("Analytics API Integration", () => {
     mockAnalyticsQueryResult.data = mockDailyAnalytics;
     mockAnalyticsQueryResult.error = null;
 
-    const req = new Request("http://localhost/api/v1/messages/analytics?days=14", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer test-token",
+    const req = new Request(
+      "http://localhost/api/v1/messages/analytics?days=14",
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-token",
+        },
       },
-    });
+    );
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
     const body = await res.json();
-    // @ts-ignore
+    // @ts-expect-error
     expect(body.analytics).toEqual(mockDailyAnalytics);
     expect(mockAnalyticsFrom).toHaveBeenCalledWith("message_analytics_view");
   });
@@ -190,7 +199,7 @@ describe("Analytics API Integration", () => {
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
     const body = await res.json();
-    // @ts-ignore
+    // @ts-expect-error
     expect(body.analytics).toEqual([]);
   });
 
@@ -214,9 +223,9 @@ describe("Analytics API Integration", () => {
     const res = await app.fetch(req, env);
     expect(res.status).toBe(500);
     const body = await res.json();
-    // @ts-ignore
+    // @ts-expect-error
     expect(body.success).toBe(false);
-    // @ts-ignore
+    // @ts-expect-error
     expect(body.error).toBe("Failed to fetch message analytics");
   });
 
@@ -227,13 +236,16 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    const req = new Request("http://localhost/api/v1/messages/analytics?days=invalid", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer test-token",
+    const req = new Request(
+      "http://localhost/api/v1/messages/analytics?days=invalid",
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-token",
+        },
       },
-    });
+    );
     const res = await app.fetch(req, env);
     expect(res.status).toBe(400);
   });

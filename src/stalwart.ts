@@ -1,10 +1,13 @@
 // src/stalwart.ts - Stalwart MTA Hook Worker
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
-import { DatabaseClient, type MessageInsert, hashEmail } from "./database";
-import type { Ai } from "./message_processor";
-import { formatEmailContentForEmbedding, generateEmbedding } from "./embedding_service";
 import Turndown from "turndown";
+import { DatabaseClient, hashEmail, type MessageInsert } from "./database";
+import {
+  formatEmailContentForEmbedding,
+  generateEmbedding,
+} from "./embedding_service";
+import type { Ai } from "./message_processor";
 
 // =============================================================================
 // SENDER FLAG TYPE
@@ -123,10 +126,12 @@ app.use(
 
 // Database client middleware - allows injection for testing
 app.use("*", async (c, next) => {
-  const db = c.get("db") || new DatabaseClient({
-    url: c.env.SUPABASE_URL,
-    key: c.env.SUPABASE_KEY,
-  });
+  const db =
+    c.get("db") ||
+    new DatabaseClient({
+      url: c.env.SUPABASE_URL,
+      key: c.env.SUPABASE_KEY,
+    });
   c.set("db", db);
   await next();
 });
@@ -155,6 +160,17 @@ const mtaHookRoute = createRoute({
         },
       },
       description: "Instructions for message handling",
+    },
+    401: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            action: z.literal("reject"),
+            reject_reason: z.string(),
+          }),
+        },
+      },
+      description: "Unauthorized: invalid API key",
     },
     500: {
       content: {
@@ -199,11 +215,15 @@ app.openapi(mtaHookRoute, async (c) => {
     // Process all recipients and ensure they get the same campaign folder
     // First, classify the message once to determine the campaign
     const messageContent = extractMessageContent(hookData);
-    let sharedCampaignClassification: { campaign_name: string | null; confidence: number; campaign_id: number | null } | null = null;
+    const sharedCampaignClassification: {
+      campaign_name: string | null;
+      confidence: number;
+      campaign_id: number | null;
+    } | null = null;
 
     if (messageContent.length >= 10) {
       try {
-        const embedding = await generateEmbedding(c.env.AI, messageContent);
+        const _embedding = await generateEmbedding(c.env.AI, messageContent);
         // Note: We can't classify without knowing the politician yet, so skip shared classification
         // Each recipient will classify independently based on their politician_id
       } catch (error) {
@@ -213,7 +233,7 @@ app.openapi(mtaHookRoute, async (c) => {
 
     // Process each recipient with the shared campaign classification
     const results = await Promise.all(
-      hookData.recipients.map(async (recipientEmail) => {
+      hookData.recipients.map(async (recipientEmail: string) => {
         return await processEmailForRecipient(
           db,
           c.env.AI,
@@ -232,7 +252,7 @@ app.openapi(mtaHookRoute, async (c) => {
         confidence: 0,
         reject_reason: "No recipients",
       };
-      return c.json<StalwartResponse>(emptyRes);
+      return c.json(emptyRes, 200);
     }
 
     // Use the result with highest confidence (they should all have same folder now)
@@ -244,7 +264,7 @@ app.openapi(mtaHookRoute, async (c) => {
       `Email processed: campaign=${bestResult.modifications?.headers?.["X-CircularDemocracy-Campaign"]}, confidence=${bestResult.confidence}`,
     );
 
-    return c.json<StalwartResponse>(bestResult);
+    return c.json(bestResult, 200);
   } catch (error) {
     console.error("MTA Hook processing error:", error);
 
@@ -254,7 +274,7 @@ app.openapi(mtaHookRoute, async (c) => {
       error: error instanceof Error ? error.message : "Unknown error",
     };
     // src/stalwart.ts - Stalwart MTA Hook Worker
-    return c.json<ErrorResponse>(errorRes, 500);
+    return c.json(errorRes, 500);
   }
 });
 
@@ -278,7 +298,11 @@ async function processEmailForRecipient(
   senderEmail: string,
   _senderName: string,
   recipientEmail: string,
-  sharedCampaignClassification: { campaign_name: string | null; confidence: number; campaign_id: number | null } | null,
+  _sharedCampaignClassification: {
+    campaign_name: string | null;
+    confidence: number;
+    campaign_id: number | null;
+  } | null,
 ): Promise<StalwartResponse> {
   try {
     // Step 1: Check for duplicate message
@@ -317,10 +341,17 @@ async function processEmailForRecipient(
 
     // Check campaign hint from subject/body (extract from recipient email or subject)
     const subjectHeader = getHeader(hookData.headers, "subject") || "";
-    const campaignHint = recipientEmail.match(/\+([^@]+)@/) ? recipientEmail.match(/\+([^@]+)@/)?.[1] :
-      subjectHeader.match(/\[([^\]]+)\]/) ? subjectHeader.match(/\[([^\]]+)\]/)?.[1] : undefined;
+    const campaignHint = recipientEmail.match(/\+([^@]+)@/)
+      ? recipientEmail.match(/\+([^@]+)@/)?.[1]
+      : subjectHeader.match(/\[([^\]]+)\]/)
+        ? subjectHeader.match(/\[([^\]]+)\]/)?.[1]
+        : undefined;
 
-    let classification: { campaign_id: number | null; campaign_name?: string | null; confidence: number };
+    let classification: {
+      campaign_id: number | null;
+      campaign_name?: string | null;
+      confidence: number;
+    };
 
     // Try campaign hint first
     if (campaignHint) {
@@ -334,14 +365,21 @@ async function processEmailForRecipient(
       } else {
         // Fallback to vector similarity
         const similarCampaigns = await db.findSimilarCampaigns(embedding, 3);
-        if (similarCampaigns.length > 0 && similarCampaigns[0].distance <= 0.1) {
+        if (
+          similarCampaigns.length > 0 &&
+          similarCampaigns[0].distance <= 0.1
+        ) {
           classification = {
             campaign_id: similarCampaigns[0].id,
             campaign_name: similarCampaigns[0].name,
             confidence: 1 - similarCampaigns[0].distance,
           };
         } else {
-          classification = { campaign_id: null, campaign_name: null, confidence: 0.1 };
+          classification = {
+            campaign_id: null,
+            campaign_name: null,
+            confidence: 0.1,
+          };
         }
       }
     } else {
@@ -354,7 +392,11 @@ async function processEmailForRecipient(
           confidence: 1 - similarCampaigns[0].distance,
         };
       } else {
-        classification = { campaign_id: null, campaign_name: null, confidence: 0.1 };
+        classification = {
+          campaign_id: null,
+          campaign_name: null,
+          confidence: 0.1,
+        };
       }
     }
 
@@ -366,9 +408,9 @@ async function processEmailForRecipient(
     if (isDuplicate) {
       const campaignFolder = classification.campaign_name
         ? classification.campaign_name
-          .replace(/[^a-zA-Z0-9\-_\s]/g, "")
-          .replace(/\s+/g, "-")
-          .substring(0, 50)
+            .replace(/[^a-zA-Z0-9\-_\s]/g, "")
+            .replace(/\s+/g, "-")
+            .substring(0, 50)
         : "System";
 
       return {
@@ -395,9 +437,15 @@ async function processEmailForRecipient(
     // Step 5b: Compute sender flag and reply status
     const replyToHeader = getHeader(hookData.headers, "reply-to");
     const fromHeader = getHeader(hookData.headers, "from");
-    const replyToEmail = replyToHeader ? extractEmailFromHeader(replyToHeader) : null;
+    const replyToEmail = replyToHeader
+      ? extractEmailFromHeader(replyToHeader)
+      : null;
     const fromEmail = fromHeader ? extractEmailFromHeader(fromHeader) : null;
-    const senderFlag: SenderFlag = determineSenderFlag(replyToEmail, fromEmail, hookData.sender);
+    const senderFlag: SenderFlag = determineSenderFlag(
+      replyToEmail,
+      fromEmail,
+      hookData.sender,
+    );
     const isReply = detectReply(hookData.headers);
 
     if (senderFlag !== "normal") {
@@ -413,7 +461,7 @@ async function processEmailForRecipient(
       channel_source: "stalwart",
       politician_id: politician.id,
       sender_hash: senderHash,
-      campaign_id: classification.campaign_id ?? null as any,
+      campaign_id: classification.campaign_id ?? (null as any),
       classification_confidence: classification.confidence,
       message_embedding: embedding,
       language: "auto", // TODO: detect language
@@ -429,7 +477,11 @@ async function processEmailForRecipient(
     await db.insertMessage(messageData);
 
     // Step 7: Generate folder and response
-    const folderName = generateFolderName(classification, duplicateRank, isReply);
+    const folderName = generateFolderName(
+      classification,
+      duplicateRank,
+      isReply,
+    );
 
     return {
       action: "accept" as const,
@@ -437,13 +489,16 @@ async function processEmailForRecipient(
       modifications: {
         folder: folderName,
         headers: {
-          "X-CircularDemocracy-Campaign": classification.campaign_name || "unclassified",
+          "X-CircularDemocracy-Campaign":
+            classification.campaign_name || "unclassified",
           "X-CircularDemocracy-Confidence":
             classification.confidence.toString(),
           "X-CircularDemocracy-Duplicate-Rank": duplicateRank.toString(),
           "X-CircularDemocracy-Message-ID": hookData.messageId,
           "X-CircularDemocracy-Politician": politician.name,
-          "X-CircularDemocracy-Status": classification.campaign_name ? "processed" : "unclassified",
+          "X-CircularDemocracy-Status": classification.campaign_name
+            ? "processed"
+            : "unclassified",
         },
       },
     };
@@ -476,7 +531,7 @@ const turndownService = new Turndown({
   fence: "```",
   emDelimiter: "*",
   strongDelimiter: "**",
-  linkStyle: "inlined"
+  linkStyle: "inlined",
 });
 
 function extractEmailFromHeader(headerValue: string): string | null {
@@ -490,19 +545,29 @@ function determineSenderFlag(
   fromEmail: string | null,
   envelopeSender: string,
 ): SenderFlag {
-  if (!replyToEmail) return "normal";
+  if (!replyToEmail) {
+    return "normal";
+  }
   const rt = replyToEmail.toLowerCase();
   const from = fromEmail?.toLowerCase() ?? null;
   const env = envelopeSender.toLowerCase();
-  if (rt !== from && rt !== env) return "replyToDiffers";
-  if (rt !== env) return "suspicious";
+  if (rt !== from && rt !== env) {
+    return "replyToDiffers";
+  }
+  if (rt !== env) {
+    return "suspicious";
+  }
   return "normal";
 }
 
 function detectReply(headers: Record<string, string | string[]>): boolean {
-  if (getHeader(headers, "in-reply-to") || getHeader(headers, "references")) return true;
+  if (getHeader(headers, "in-reply-to") || getHeader(headers, "references")) {
+    return true;
+  }
   const subject = getHeader(headers, "subject");
-  if (subject && /^(re:|fwd:|fw:)/i.test(subject.trim())) return true;
+  if (subject && /^(re:|fwd:|fw:)/i.test(subject.trim())) {
+    return true;
+  }
   return false;
 }
 
@@ -593,10 +658,10 @@ function isValidEmail(email: string): boolean {
 
 function generateFolderName(
   classification: { campaign_name?: string | null; confidence: number },
-  duplicateRank: number,
-  isReply = false,
+  _duplicateRank: number,
+  _isReply = false,
 ): string {
-  // If no campaign assigned, use unclassified folder
+  // If no campaign assigned, use the shared Unclassified folder
   if (!classification.campaign_name) {
     return "Unclassified";
   }

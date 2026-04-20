@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { DatabaseClient } from "../src/database.js";
 import { generateEmbedding, formatEmailContentForEmbedding } from "../src/embedding_service.js";
@@ -202,8 +202,8 @@ function extractBodyFromParts(
 }
 
 function generateFolderPath(campaignName: string | null): string {
-  if (!campaignName || campaignName === "Uncategorized") {
-    return "Uncategorized";
+  if (!campaignName) {
+    return "Unclassified";
   }
 
   const campaignFolder = campaignName
@@ -303,7 +303,7 @@ async function moveEmailToMailbox(
 
 function parseArgs(args: string[]): ReprocessOptions {
   const parsed: Record<string, string | boolean | number> = {};
-  const booleanFlags = new Set(["dry-run", "process-all", "move-to-folders"]);
+  const booleanFlags = new Set(["dry-run", "process-all", "move-to-folders", "no-move-to-folders"]);
 
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
@@ -360,7 +360,7 @@ function parseArgs(args: string[]): ReprocessOptions {
     limit: typeof parsed.limit === "number" ? parsed.limit : undefined,
     processAll,
     dryRun: parsed["dry-run"] === true,
-    moveToFolders: parsed["move-to-folders"] === true,
+    moveToFolders: parsed["dry-run"] === true ? false : parsed["no-move-to-folders"] !== true,
     username: typeof parsed.user === "string" ? parsed.user : undefined,
     password: typeof parsed.password === "string" ? parsed.password : undefined,
   };
@@ -376,13 +376,13 @@ USAGE:
   reprocess-messages [options]
 
 OPTIONS:
-  --user <username>      JMAP username (default: STALWART_USERNAME env or "dibora")
+  --user <username>      JMAP username (default: STALWART_USERNAME env)
   --password <password>  JMAP app password (default: STALWART_APP_PASSWORD env)
-  --process-all          Reprocess uncategorized messages from Stalwart inbox (no campaign_id or campaign_id 472)
+  --process-all          Reprocess uncategorized messages from Stalwart inbox (campaign_id is null)
   --campaign-id <id>     Only reprocess messages for a specific campaign
   --since <date>         Only reprocess messages received after date (ISO 8601)
   --limit <number>       Maximum number of messages to reprocess
-  --move-to-folders      Move messages to campaign folders in Stalwart (campaign name only, no subfolders)
+  --no-move-to-folders   Disable folder move after reclassification (enabled by default unless --dry-run)
   --dry-run              Preview messages without reprocessing
   -h, --help             Show this help message
 
@@ -390,11 +390,11 @@ ENVIRONMENT VARIABLES:
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
   STALWART_APP_PASSWORD  Required JMAP app password for fetching message content
-  STALWART_USERNAME      Optional JMAP username (default: "dibora")
+  STALWART_USERNAME      Optional JMAP username
 
 EXAMPLES:
   reprocess-messages --process-all
-  reprocess-messages --process-all --move-to-folders
+  reprocess-messages --process-all --no-move-to-folders
   reprocess-messages --limit 100
   reprocess-messages --campaign-id 5
   reprocess-messages --since "2024-03-01"
@@ -435,9 +435,9 @@ async function reprocessMessages(
     query = query.eq("campaign_id", options.campaignId);
   }
 
-  // When using --process-all, only process uncategorized messages (no campaign_id or campaign_id 472)
+  // When using --process-all, only process uncategorized messages (campaign_id is null)
   if (options.processAll) {
-    query = query.or("campaign_id.is.null,campaign_id.eq.472");
+    query = query.is("campaign_id", null);
   }
 
   if (options.since) {
@@ -479,8 +479,12 @@ async function reprocessMessages(
   const needsJmap = messages.some((msg: any) => msg.stalwart_message_id) || options.moveToFolders;
 
   if (needsJmap) {
-    const username = options.username || process.env.STALWART_USERNAME || "dibora";
+    const username = options.username || process.env.STALWART_USERNAME;
     const password = options.password || process.env.STALWART_APP_PASSWORD || process.env.STALWART_PASSWORD;
+
+    if (!username) {
+      throw new Error("STALWART_USERNAME environment variable or --user must be set for JMAP access");
+    }
 
     if (!password) {
       throw new Error("STALWART_APP_PASSWORD environment variable or --password must be set to fetch content from Stalwart");
