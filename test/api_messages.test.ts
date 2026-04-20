@@ -1,8 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import app from "../src/api";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the embedding service to avoid ONNX runtime issues
-vi.mock("../src/embedding_service", () => ({
+vi.mock("../src/embedding_service.ts", () => ({
   generateEmbedding: vi.fn().mockResolvedValue(new Array(1024).fill(0.1)),
   formatEmailContentForEmbedding: vi
     .fn()
@@ -26,7 +25,7 @@ const { mockDbInstance } = vi.hoisted(() => ({
 }));
 
 // --- Mock the entire database module ---
-vi.mock("../src/database", () => ({
+vi.mock("../src/database.ts", () => ({
   DatabaseClient: vi.fn(function MockDatabaseClient() {
     return mockDbInstance;
   }),
@@ -34,6 +33,8 @@ vi.mock("../src/database", () => ({
 }));
 
 describe("Messages API Integration", () => {
+  let app: (typeof import("../src/api"))["default"];
+
   const env = {
     AI: { run: vi.fn() },
     SUPABASE_URL: "https://test.supabase.co",
@@ -61,12 +62,15 @@ describe("Messages API Integration", () => {
     campaign_hint: undefined,
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.clearAllMocks();
     process.env.SUPABASE_URL = env.SUPABASE_URL;
     process.env.SUPABASE_KEY = env.SUPABASE_KEY;
     mockDbInstance.upsertSupporter.mockResolvedValue(1);
     mockDbInstance.storeMessageContact.mockResolvedValue(undefined);
+    const apiModule = await import("../src/api.ts");
+    app = apiModule.default;
   });
 
   it("should return 404 if API key is missing", async () => {

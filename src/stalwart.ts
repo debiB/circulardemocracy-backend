@@ -170,7 +170,7 @@ const mtaHookRoute = createRoute({
           }),
         },
       },
-      description: "Invalid or missing API key",
+      description: "Unauthorized: invalid API key",
     },
     500: {
       content: {
@@ -233,7 +233,7 @@ app.openapi(mtaHookRoute, async (c) => {
 
     // Process each recipient with the shared campaign classification
     const results = await Promise.all(
-      hookData.recipients.map(async (recipientEmail) => {
+      hookData.recipients.map(async (recipientEmail: string) => {
         return await processEmailForRecipient(
           db,
           c.env.AI,
@@ -661,7 +661,7 @@ function generateFolderName(
   _duplicateRank: number,
   _isReply = false,
 ): string {
-  // If no campaign assigned, use unclassified folder
+  // If no campaign assigned, use the shared Unclassified folder
   if (!classification.campaign_name) {
     return "Unclassified";
   }

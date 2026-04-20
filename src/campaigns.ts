@@ -93,6 +93,17 @@ const statsRoute = createRoute({
       },
       description: "Campaign statistics",
     },
+    500: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.boolean(),
+            error: z.string(),
+          }),
+        },
+      },
+      description: "Failed to fetch statistics",
+    },
   },
   tags: ["Campaigns", "Statistics"], // Added Campaigns tag
   summary: "/api/v1/campaigns/stats",
@@ -100,16 +111,20 @@ const statsRoute = createRoute({
 
 app.openapi(statsRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
-  const stats = await db.request<
-    Array<{
-      id: number;
-      name: string;
-      message_count: number;
-      recent_count: number;
-      avg_confidence?: number;
-    }>
-  >("/rpc/get_campaign_stats");
-  return c.json({ campaigns: stats });
+  try {
+    const stats = await db.request<
+      Array<{
+        id: number;
+        name: string;
+        message_count: number;
+        recent_count: number;
+        avg_confidence?: number;
+      }>
+    >("/rpc/get_campaign_stats");
+    return c.json({ campaigns: stats }, 200);
+  } catch (_error) {
+    return c.json({ success: false, error: "Failed to fetch statistics" }, 500);
+  }
 });
 
 // Get Single Campaign
