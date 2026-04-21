@@ -182,8 +182,7 @@ export class DatabaseClient {
         .from("politicians")
         .select("id,name,email,additional_emails,active")
         .eq("email", email)
-        .eq("active", true)
-        .retry(false);
+        .eq("active", true);
 
       if (exactError) {
         throw exactError;
@@ -197,8 +196,7 @@ export class DatabaseClient {
         .from("politicians")
         .select("id,name,email,additional_emails,active")
         .contains("additional_emails", [email])
-        .eq("active", true)
-        .retry(false);
+        .eq("active", true);
 
       if (arrayError) {
         throw arrayError;
@@ -266,42 +264,6 @@ export class DatabaseClient {
         throw fallbackError;
       }
       return fallback.map((camp) => ({ ...camp, distance: 0.1 }));
-    }
-  }
-
-  async getUncategorizedCampaign(): Promise<Campaign> {
-    try {
-      const { data: campaigns, error } = await this.supabase
-        .from("campaigns")
-        .select("id,name,slug,status")
-        .eq("slug", "uncategorized");
-
-      if (error) {
-        throw error;
-      }
-      if (campaigns.length > 0) {
-        return campaigns[0];
-      }
-
-      // Create uncategorized campaign
-      const { data: newCampaigns, error: createError } = await this.supabase
-        .from("campaigns")
-        .insert({
-          name: "Uncategorized",
-          slug: "uncategorized",
-          description: "Messages that could not be automatically categorized",
-          status: "active",
-          created_by: "system",
-        })
-        .select();
-
-      if (createError) {
-        throw createError;
-      }
-      return newCampaigns[0];
-    } catch (error) {
-      console.error("Error getting uncategorized campaign:", error);
-      throw new Error("Failed to get or create uncategorized campaign");
     }
   }
 
@@ -1353,8 +1315,10 @@ export class DatabaseClient {
       classification_confidence: classification.confidence,
     });
 
-    // Step 3: Assign to cluster for grouping similar messages
-    await this.assignMessageToCluster(messageId, embedding, politicianId);
+    // Step 3: Assign to cluster only when campaign is still unknown
+    if (classification.campaign_id === null) {
+      await this.assignMessageToCluster(messageId, embedding, politicianId);
+    }
 
     return classification;
   }
@@ -1392,14 +1356,43 @@ export class DatabaseClient {
       }
     }
 
-    // Step 3: Fall back to uncategorized
-    const uncategorized = await this.getUncategorizedCampaign();
-
+    // Step 3: No reliable match -> keep campaign unset
     return {
-      campaign_id: uncategorized.id,
-      campaign_name: uncategorized.name,
+      campaign_id: null,
+      campaign_name: null,
       confidence: 0.1,
     };
+  }
+
+  // =============================================================================
+  // ANALYTICS OPERATIONS
+  // =============================================================================
+
+  async getMessageAnalyticsDaily(daysBack: number): Promise<
+    Array<{
+      date: string;
+      campaign_id: number;
+      campaign_name: string;
+      message_count: number;
+    }>
+  > {
+    try {
+      const { data, error } = await this.supabase.rpc(
+        "get_message_analytics_daily",
+        {
+          days_back: daysBack,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error fetching message analytics:", error);
+      return [];
+    }
   }
 }
 

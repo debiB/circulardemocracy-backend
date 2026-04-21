@@ -37,14 +37,6 @@ describe("DatabaseClient", () => {
     mockFetch.mockClear();
     mockFetch.mockReset();
 
-    vi.spyOn(db, "getUncategorizedCampaign").mockResolvedValue({
-      id: 999,
-      name: "Uncategorized",
-      slug: "uncategorized",
-      status: "active",
-      reference_vector: new Array(1024).fill(0),
-    });
-
     vi.spyOn(db, "assignMessageToCluster").mockResolvedValue(1);
     vi.spyOn(db, "updateMessageFields").mockResolvedValue(undefined);
   });
@@ -78,8 +70,14 @@ describe("DatabaseClient", () => {
 
     it("should return null when politician not found", async () => {
       mockFetch
-        .mockResolvedValueOnce(createMockResponse([]))
-        .mockResolvedValueOnce(createMockResponse([]));
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [],
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [],
+        } as Response);
 
       const result = await db.findPoliticianByEmail("notfound@example.com");
 
@@ -178,8 +176,8 @@ describe("DatabaseClient", () => {
       );
 
       expect(result).toEqual({
-        campaign_id: 999,
-        campaign_name: "Uncategorized",
+        campaign_id: null,
+        campaign_name: null,
         confidence: 0.1,
       });
 
