@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the embedding service to avoid ONNX runtime errors
 vi.mock("../src/embedding_service.ts", () => ({
@@ -11,7 +11,6 @@ vi.mock("../src/embedding_service.ts", () => ({
 // --- Create a singleton mock instance ---
 const mockDbInstance = {
   request: vi.fn(),
-  getMessageAnalyticsDaily: vi.fn(),
 };
 
 // --- Mock the entire database module ---
@@ -23,10 +22,25 @@ vi.mock("../src/database.ts", () => ({
 
 // Mock Supabase client for auth
 const mockGetUser = vi.fn();
+const mockAnalyticsOrder = vi.fn();
+const mockAnalyticsGte = vi.fn();
+const mockAnalyticsSelect = vi.fn();
+const mockAnalyticsFrom = vi.fn();
+const mockAnalyticsQueryResult = {
+  data: [] as any[],
+  error: null as any,
+};
+
+mockAnalyticsOrder.mockImplementation(async () => mockAnalyticsQueryResult);
+mockAnalyticsGte.mockImplementation(() => ({ order: mockAnalyticsOrder }));
+mockAnalyticsSelect.mockImplementation(() => ({ gte: mockAnalyticsGte }));
+mockAnalyticsFrom.mockImplementation(() => ({ select: mockAnalyticsSelect }));
+
 const mockSupabaseClient = {
   auth: {
     getUser: mockGetUser,
   },
+  from: mockAnalyticsFrom,
 };
 
 vi.mock("@supabase/supabase-js", () => ({
@@ -34,7 +48,7 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 describe("Analytics API Integration", () => {
-  let app: (typeof import("../src/api"))["default"];
+  let app: typeof import("../src/api")["default"];
 
   const env = {
     AI: { run: vi.fn() },
@@ -50,6 +64,9 @@ describe("Analytics API Integration", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockAnalyticsQueryResult.data = [];
+    mockAnalyticsQueryResult.error = null;
+    mockAnalyticsOrder.mockImplementation(async () => mockAnalyticsQueryResult);
     const apiModule = await import("../src/api.ts");
     app = apiModule.default;
     // Default: mock failed auth
@@ -90,7 +107,7 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    // Mock daily aggregated data from database
+    // Mock daily aggregated data from message_analytics_view query
     const mockDailyAnalytics = [
       {
         date: "2026-03-31",
@@ -106,9 +123,8 @@ describe("Analytics API Integration", () => {
       },
     ];
 
-    mockDbInstance.getMessageAnalyticsDaily.mockResolvedValue(
-      mockDailyAnalytics,
-    );
+    mockAnalyticsQueryResult.data = mockDailyAnalytics;
+    mockAnalyticsQueryResult.error = null;
 
     const req = new Request("http://localhost/api/v1/messages/analytics", {
       method: "GET",
@@ -122,7 +138,7 @@ describe("Analytics API Integration", () => {
     const body = await res.json();
     // @ts-expect-error
     expect(body.analytics).toEqual(mockDailyAnalytics);
-    expect(mockDbInstance.getMessageAnalyticsDaily).toHaveBeenCalledWith(7);
+    expect(mockAnalyticsFrom).toHaveBeenCalledWith("message_analytics_view");
   });
 
   it("should return 200 with analytics data using custom days parameter", async () => {
@@ -132,7 +148,7 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    // Mock daily aggregated data from database
+    // Mock daily aggregated data from message_analytics_view query
     const mockDailyAnalytics = [
       {
         date: "2026-03-30",
@@ -142,9 +158,8 @@ describe("Analytics API Integration", () => {
       },
     ];
 
-    mockDbInstance.getMessageAnalyticsDaily.mockResolvedValue(
-      mockDailyAnalytics,
-    );
+    mockAnalyticsQueryResult.data = mockDailyAnalytics;
+    mockAnalyticsQueryResult.error = null;
 
     const req = new Request(
       "http://localhost/api/v1/messages/analytics?days=14",
@@ -161,7 +176,7 @@ describe("Analytics API Integration", () => {
     const body = await res.json();
     // @ts-expect-error
     expect(body.analytics).toEqual(mockDailyAnalytics);
-    expect(mockDbInstance.getMessageAnalyticsDaily).toHaveBeenCalledWith(14);
+    expect(mockAnalyticsFrom).toHaveBeenCalledWith("message_analytics_view");
   });
 
   it("should return empty array when no analytics data is available", async () => {
@@ -171,7 +186,8 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    mockDbInstance.getMessageAnalyticsDaily.mockResolvedValue([]);
+    mockAnalyticsQueryResult.data = [];
+    mockAnalyticsQueryResult.error = null;
 
     const req = new Request("http://localhost/api/v1/messages/analytics", {
       method: "GET",
@@ -194,9 +210,8 @@ describe("Analytics API Integration", () => {
       error: null,
     });
 
-    mockDbInstance.getMessageAnalyticsDaily.mockRejectedValue(
-      new Error("Database connection failed"),
-    );
+    mockAnalyticsQueryResult.data = null as any;
+    mockAnalyticsQueryResult.error = { message: "Database connection failed" };
 
     const req = new Request("http://localhost/api/v1/messages/analytics", {
       method: "GET",
