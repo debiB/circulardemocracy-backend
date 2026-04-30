@@ -1,5 +1,10 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { authMiddleware } from "./auth";
+import {
+  authMiddleware,
+  canAccessPoliticianId,
+  type AuthContext,
+  requireAppRole,
+} from "./auth";
 import type { DatabaseClient } from "./database";
 
 // Define types for env and app
@@ -16,6 +21,7 @@ const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
 
 // Apply auth middleware to all routes in this file
 app.use("/api/v1/politicians/*", authMiddleware);
+app.use("/api/v1/politicians/*", requireAppRole("politician", "staff", "admin"));
 
 // =============================================================================
 // SCHEMAS
@@ -52,9 +58,20 @@ const listPoliticiansRoute = createRoute({
 
 app.openapi(listPoliticiansRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
-  const data = await db.request<any[]>(
-    "/politicians?select=id,name,email,party,country,region,position,active",
-  );
+  const auth = c.get("auth") as AuthContext;
+  let data: any[];
+  if (auth.role === "admin") {
+    data = await db.request<any[]>(
+      "/politicians?select=id,name,email,party,country,region,position,active",
+    );
+  } else if (auth.politicianIds.length > 0) {
+    const idList = auth.politicianIds.join(",");
+    data = await db.request<any[]>(
+      `/politicians?id=in.(${idList})&select=id,name,email,party,country,region,position,active`,
+    );
+  } else {
+    data = [];
+  }
   return c.json(data);
 });
 
@@ -78,7 +95,12 @@ const getPoliticianRoute = createRoute({
 
 app.openapi(getPoliticianRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
+  const auth = c.get("auth") as AuthContext;
   const { id } = c.req.valid("param");
+  const politicianId = Number.parseInt(id, 10);
+  if (!canAccessPoliticianId(auth, politicianId)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
   const data = await db.request<any[]>(
     `/politicians?id=eq.${id}&select=id,name,email,party,country,region,position,active&limit=1`,
   );

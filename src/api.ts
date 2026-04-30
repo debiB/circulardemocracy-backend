@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import analyticsApp from "./analytics";
+import { authMiddleware, requireAppRole } from "./auth";
 import campaignsApp from "./campaigns";
 import { DatabaseClient } from "./database";
 import loginApp from "./login";
@@ -57,6 +58,9 @@ app.get("/health", (c) => {
 // =============================================================================
 // WORKER ENDPOINTS
 // =============================================================================
+
+app.use("/api/v1/worker/*", authMiddleware);
+app.use("/api/v1/worker/*", requireAppRole("admin"));
 
 /**
  * Manual trigger endpoint for reply worker (testing/admin)

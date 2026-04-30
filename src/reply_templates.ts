@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { authMiddleware } from "./auth";
+import { authMiddleware, requireAppRole } from "./auth";
 import type { DatabaseClient } from "./database";
 import {
   createReplyTemplate,
@@ -20,6 +20,10 @@ const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
 
 // Apply auth middleware to all routes in this file
 app.use("/api/v1/reply-templates/*", authMiddleware);
+app.use(
+  "/api/v1/reply-templates/*",
+  requireAppRole("politician", "staff", "admin"),
+);
 
 // =============================================================================
 // SCHEMAS

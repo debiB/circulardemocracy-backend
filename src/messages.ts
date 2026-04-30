@@ -1,4 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { authMiddleware, requireAppRole } from "./auth";
 import type { DatabaseClient } from "./database";
 import {
   type Ai,
@@ -21,6 +22,8 @@ interface Variables {
 }
 
 const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
+app.use("/api/v1/messages", authMiddleware);
+app.use("/api/v1/messages", requireAppRole("politician", "staff", "admin"));
 
 // Schemas specific to message processing
 const MessageInputSchema = z.object({
@@ -130,7 +133,7 @@ const messageRoute = createRoute({
           schema: ErrorResponseSchema,
         },
       },
-      description: "Unauthorized - Invalid API Key",
+      description: "Unauthorized - Invalid or missing Supabase JWT",
     },
     404: {
       content: {

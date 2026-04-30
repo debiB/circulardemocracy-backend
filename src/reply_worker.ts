@@ -4,12 +4,16 @@
 import type { DatabaseClient } from "./database";
 import { renderEmailLayout } from "./email_layout";
 import { type EmailMessage, JMAPClient } from "./jmap_client";
+import {
+  resolveStalwartJmapWorkerConfig,
+  type MailSendBindings,
+} from "./stalwart_jmap_env";
+import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
 
 export interface WorkerConfig {
   jmapApiUrl: string;
   jmapAccountId: string;
-  jmapUsername: string;
-  jmapPassword: string;
+  jmapBearerToken: string;
 }
 
 type RuntimeSecretBindings = Record<string, string | undefined>;
@@ -172,6 +176,14 @@ async function processSingleMessage(
   message: MessageToProcess,
   runtimeSecrets?: RuntimeSecretBindings,
 ): Promise<void> {
+  const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
+  if (!jmapResolve.ok) {
+    const errorMsg = jmapResolve.reason;
+    await handleSendFailure(db, message, errorMsg);
+    throw new Error(errorMsg);
+  }
+  const jmapConfig = jmapResolve.config;
+
   // 1. Get the active reply template for this campaign
   const template = await db.getActiveTemplateForCampaign(message.campaign_id);
 
@@ -189,22 +201,10 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const jmapResolve = resolveJmapConfigForPolitician(
-    politician,
-    runtimeSecrets,
-  );
-  if (!jmapResolve.ok) {
-    const errorMsg = jmapResolve.reason;
-    await handleSendFailure(db, message, errorMsg);
-    throw new Error(errorMsg);
-  }
-  const jmapConfig = jmapResolve.config;
-
   const jmapClient = new JMAPClient({
     apiUrl: jmapConfig.jmapApiUrl,
     accountId: jmapConfig.jmapAccountId,
-    username: jmapConfig.jmapUsername,
-    password: jmapConfig.jmapPassword,
+    bearerToken: jmapConfig.jmapBearerToken,
   });
 
   // 3. Resolve recipient email from short-term contact storage
@@ -379,10 +379,6 @@ async function getPoliticianById(
   id: number;
   email: string;
   name: string;
-  stalwart_jmap_endpoint: string | null;
-  stalwart_jmap_account_id: string | null;
-  stalwart_username: string | null;
-  stalwart_app_password_secret_name: string | null;
 } | null> {
   try {
     return await db.getPoliticianById(politicianId);
@@ -396,86 +392,40 @@ type JmapResolveResult =
   | { ok: true; config: WorkerConfig }
   | { ok: false; reason: string };
 
-function resolveJmapConfigForPolitician(
-  politician: {
-    id: number;
-    email: string;
-    stalwart_jmap_endpoint: string | null;
-    stalwart_jmap_account_id: string | null;
-    stalwart_username: string | null;
-    stalwart_app_password_secret_name: string | null;
-  },
+async function resolveSingleServiceAccountConfig(
   runtimeSecrets?: RuntimeSecretBindings,
-): JmapResolveResult {
-  const secretName = politician.stalwart_app_password_secret_name?.trim() || "";
-  const secretPassword = secretName
-    ? resolveRuntimeSecret(secretName, runtimeSecrets)
-    : "";
-  const jmapApiUrl = String(politician.stalwart_jmap_endpoint ?? "").trim();
-  const accountRaw = politician.stalwart_jmap_account_id;
-  const jmapAccountId =
-    (accountRaw != null && String(accountRaw).trim()) ||
-    politician.email?.trim() ||
-    "";
-  const jmapUsername = String(politician.stalwart_username ?? "").trim();
-  const jmapPassword = secretPassword;
+): Promise<JmapResolveResult> {
+  const mergedBindings: MailSendBindings = {
+    ...(processEnv || {}),
+    ...(runtimeSecrets || {}),
+  };
+  const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
+  if (!baseConfig) {
+    return {
+      ok: false,
+      reason:
+        "Single JMAP relay service account is not configured. Set STALWART_JMAP_ENDPOINT and STALWART_JMAP_ACCOUNT_ID.",
+    };
+  }
 
-  if (!jmapApiUrl) {
+  const relayToken = await getSupabaseRelayAccessToken(
+    mergedBindings as RuntimeSecretBindings,
+  );
+  if (!relayToken) {
     return {
       ok: false,
-      reason: `Politician ${politician.id}: stalwart_jmap_endpoint is missing in DB`,
+      reason:
+        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, STALWART_SUPABASE_RELAY_EMAIL, and STALWART_SUPABASE_RELAY_PASSWORD.",
     };
   }
-  if (!jmapAccountId) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: stalwart_jmap_account_id (or email) is missing in DB`,
-    };
-  }
-  if (!jmapUsername) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: stalwart_username is missing in DB`,
-    };
-  }
-  if (!secretName) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: stalwart_app_password_secret_name is missing in DB`,
-    };
-  }
-  if (!jmapPassword) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: app password not found in runtime for secret name "${secretName}". Add it to the Worker (wrangler secret put ${secretName}) or local .env for dev.`,
-    };
-  }
+  const config: WorkerConfig = {
+    ...baseConfig,
+    jmapBearerToken: relayToken,
+  };
 
   return {
     ok: true,
-    config: {
-      jmapApiUrl,
-      jmapAccountId,
-      jmapUsername,
-      jmapPassword,
-    },
+    config,
   };
-}
-
-function resolveRuntimeSecret(
-  key: string,
-  runtimeSecrets?: RuntimeSecretBindings,
-): string {
-  const fromBindings = String(runtimeSecrets?.[key] ?? "").trim();
-  if (fromBindings) {
-    return fromBindings;
-  }
-
-  const fromProcessEnv = String(processEnv?.[key] ?? "").trim();
-  if (fromProcessEnv) {
-    return fromProcessEnv;
-  }
-
-  return "";
 }
 

@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { authMiddleware } from "./auth";
+import { authMiddleware, requireAppRole } from "./auth";
 import type { DatabaseClient } from "./database";
 import { processReplyImmediately } from "./reply_worker";
 import { calculateReplySchedule } from "./scheduling";
@@ -19,6 +19,7 @@ const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
 
 // Apply auth middleware to all routes in this file
 app.use("/api/v1/campaigns/*", authMiddleware);
+app.use("/api/v1/campaigns/*", requireAppRole("politician", "staff", "admin"));
 
 // =============================================================================
 // SCHEMAS

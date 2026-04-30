@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const mockSupabaseGetUser = vi.fn();
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      getUser: mockSupabaseGetUser,
+    },
+  })),
+}));
+
 // Mock the embedding service to avoid ONNX runtime issues
 vi.mock("../src/embedding_service.ts", () => ({
   generateEmbedding: vi.fn().mockResolvedValue(new Array(1024).fill(0.1)),
@@ -17,6 +27,7 @@ const { mockDbInstance } = vi.hoisted(() => ({
     getDuplicateRank: vi.fn(),
     insertMessage: vi.fn(),
     updateMessageFields: vi.fn(),
+    getUserPoliticianIds: vi.fn(),
     getActiveTemplateForCampaign: vi.fn(),
     upsertSupporter: vi.fn(),
     storeMessageContact: vi.fn(),
@@ -65,15 +76,34 @@ describe("Messages API Integration", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockSupabaseGetUser.mockImplementation(async (token: string) => {
+      if (token === "valid-jwt") {
+        return {
+          data: {
+            user: {
+              id: "user-1",
+              email: "staff@example.com",
+              app_metadata: { role: "staff" },
+            },
+          },
+          error: null,
+        };
+      }
+      return {
+        data: { user: null },
+        error: { message: "Invalid token" },
+      };
+    });
     process.env.SUPABASE_URL = env.SUPABASE_URL;
     process.env.SUPABASE_KEY = env.SUPABASE_KEY;
+    mockDbInstance.getUserPoliticianIds.mockResolvedValue([1]);
     mockDbInstance.upsertSupporter.mockResolvedValue(1);
     mockDbInstance.storeMessageContact.mockResolvedValue(undefined);
     const apiModule = await import("../src/api");
     app = apiModule.default;
   });
 
-  it("should return 404 if API key is missing", async () => {
+  it("should return 401 if authorization header is missing", async () => {
     const req = new Request("http://localhost/api/v1/messages", {
       method: "POST",
       headers: {
@@ -83,10 +113,10 @@ describe("Messages API Integration", () => {
       body: JSON.stringify(validMessage),
     });
     const res = await app.fetch(req, env);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 
-  it("should return 404 if API key is invalid", async () => {
+  it("should return 401 if token is invalid", async () => {
     const req = new Request("http://localhost/api/v1/messages", {
       method: "POST",
       headers: {
@@ -96,7 +126,7 @@ describe("Messages API Integration", () => {
       body: JSON.stringify(validMessage),
     });
     const res = await app.fetch(req, env);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(401);
   });
 
   it("should return 404 if politician is not found", async () => {
@@ -106,7 +136,7 @@ describe("Messages API Integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer test-api-key",
+        Authorization: "Bearer valid-jwt",
       },
       body: JSON.stringify(validMessage),
     });
@@ -130,7 +160,7 @@ describe("Messages API Integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer test-api-key",
+        Authorization: "Bearer valid-jwt",
       },
       body: JSON.stringify(validMessage),
     });
@@ -146,7 +176,7 @@ describe("Messages API Integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer test-api-key",
+        Authorization: "Bearer valid-jwt",
       },
       body: JSON.stringify(invalidMessage),
     });
@@ -175,7 +205,7 @@ describe("Messages API Integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer test-api-key",
+        Authorization: "Bearer valid-jwt",
       },
       body: JSON.stringify(validMessage),
     });

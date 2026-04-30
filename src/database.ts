@@ -6,6 +6,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 interface SupabaseConfig {
   url: string;
   key: string;
+  accessToken?: string;
 }
 
 export interface Politician {
@@ -14,11 +15,6 @@ export interface Politician {
   email: string;
   additional_emails: string[];
   active: boolean;
-  stalwart_jmap_endpoint?: string | null;
-  stalwart_jmap_account_id?: string | null;
-  stalwart_username?: string | null;
-  stalwart_app_password?: string | null;
-  stalwart_app_password_secret_name?: string | null;
 }
 
 export interface Campaign {
@@ -76,12 +72,19 @@ export class DatabaseClient {
   public supabase: SupabaseClient;
 
   constructor(config: SupabaseConfig) {
+    const headers: Record<string, string> = {};
+    if (config.accessToken) {
+      headers.Authorization = `Bearer ${config.accessToken}`;
+    }
     this.supabase = createClient(config.url, config.key, {
       auth: {
         persistSession: false,
       },
+      // Keep explicit fetch for Worker/Node parity.
+      // Authorization header above scopes this client to the caller JWT.
       global: {
         fetch: (...args) => fetch(...args),
+        headers,
       },
     });
   }
@@ -108,6 +111,14 @@ export class DatabaseClient {
           const filterValue = rest.join(".");
           if (operator === "eq") {
             query = query.eq(key, filterValue);
+          } else if (operator === "in") {
+            const list = filterValue
+              .replace(/^\(/, "")
+              .replace(/\)$/, "")
+              .split(",")
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0);
+            query = query.in(key, list);
           }
         }
 
@@ -960,6 +971,26 @@ export class DatabaseClient {
     }
   }
 
+  async getUserPoliticianIds(authUserId: string): Promise<number[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from("politician_staff")
+        .select("politician_id")
+        .eq("user_id", authUserId);
+
+      if (error) {
+        throw error;
+      }
+
+      return (data || [])
+        .map((row: { politician_id: number | null }) => row.politician_id)
+        .filter((id: number | null): id is number => typeof id === "number");
+    } catch (error) {
+      console.error("Error fetching user politician scope:", error);
+      return [];
+    }
+  }
+
   async userOwnsCampaign(
     authUserId: string,
     campaignId: number,
@@ -1456,16 +1487,10 @@ export class DatabaseClient {
     id: number;
     email: string;
     name: string;
-    stalwart_jmap_endpoint: string | null;
-    stalwart_jmap_account_id: string | null;
-    stalwart_username: string | null;
-    stalwart_app_password_secret_name: string | null;
   } | null> {
     const { data, error } = await this.supabase
       .from("politicians")
-      .select(
-        "id, email, name, stalwart_jmap_endpoint, stalwart_jmap_account_id, stalwart_username, stalwart_app_password_secret_name",
-      )
+      .select("id, email, name")
       .eq("id", politicianId)
       .limit(1);
 

@@ -19,18 +19,12 @@ serve(
         AI: null as any, // Not available in dev mode
         STALWART_JMAP_ENDPOINT: process.env.STALWART_JMAP_ENDPOINT || "",
         STALWART_JMAP_ACCOUNT_ID:
-          process.env.STALWART_JMAP_ACCOUNT_ID ||
-          process.env.JMAP_ACCOUNT_ID ||
-          "",
-        STALWART_USERNAME: process.env.STALWART_USERNAME || "",
-        STALWART_APP_PASSWORD:
-          process.env.STALWART_APP_PASSWORD ||
-          process.env.STALWART_PASSWORD ||
-          "",
-        JMAP_API_URL: process.env.JMAP_API_URL || "",
-        JMAP_ACCOUNT_ID: process.env.JMAP_ACCOUNT_ID || "",
-        JMAP_USERNAME: process.env.JMAP_USERNAME || "",
-        JMAP_PASSWORD: process.env.JMAP_PASSWORD || "",
+          process.env.STALWART_JMAP_ACCOUNT_ID || "",
+        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
+        STALWART_SUPABASE_RELAY_EMAIL:
+          process.env.STALWART_SUPABASE_RELAY_EMAIL || "",
+        STALWART_SUPABASE_RELAY_PASSWORD:
+          process.env.STALWART_SUPABASE_RELAY_PASSWORD || "",
       });
     },
     port: 3000,

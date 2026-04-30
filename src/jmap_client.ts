@@ -4,8 +4,7 @@
 export interface JMAPConfig {
   apiUrl: string;
   accountId: string;
-  username: string;
-  password: string;
+  bearerToken: string;
 }
 
 export interface EmailMessage {
@@ -44,12 +43,12 @@ export class JMAPClient {
     this.config = config;
   }
 
-  private basicAuthHeader(): string {
-    const raw = `${this.config.username}:${this.config.password}`;
-    if (typeof Buffer !== "undefined") {
-      return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
+  private authHeader(): string {
+    const token = this.config.bearerToken.trim();
+    if (token) {
+      return `Bearer ${token}`;
     }
-    return `Basic ${btoa(raw)}`;
+    throw new Error("JMAP bearer token is required");
   }
 
   /**
@@ -65,7 +64,7 @@ export class JMAPClient {
       this.resolvedPostApiUrl = configured;
       return this.resolvedPostApiUrl;
     }
-    const authHeader = this.basicAuthHeader();
+    const authHeader = this.authHeader();
     const response = await fetch(configured, {
       method: "GET",
       headers: {
@@ -261,7 +260,7 @@ export class JMAPClient {
    */
   async sendEmail(email: EmailMessage): Promise<JMAPSendResult> {
     try {
-      const authHeader = this.basicAuthHeader();
+      const authHeader = this.authHeader();
       const apiUrl = await this.resolvePostApiUrl();
       const sentMailboxId = await this.resolveSentMailboxId(apiUrl, authHeader);
       const identityId = await this.resolveIdentityId(
@@ -445,7 +444,7 @@ export class JMAPClient {
    */
   async testConnection(): Promise<boolean> {
     try {
-      const authHeader = this.basicAuthHeader();
+      const authHeader = this.authHeader();
       const apiUrl = await this.resolvePostApiUrl();
       const response = await fetch(apiUrl, {
         method: "POST",
