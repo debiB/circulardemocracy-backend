@@ -37,6 +37,14 @@ describe("DatabaseClient", () => {
     mockFetch.mockClear();
     mockFetch.mockReset();
 
+    vi.spyOn(db, "getUncategorizedCampaign").mockResolvedValue({
+      id: 999,
+      name: "Uncategorized",
+      slug: "uncategorized",
+      status: "active",
+      reference_vector: new Array(1024).fill(0),
+    });
+
     vi.spyOn(db, "assignMessageToCluster").mockResolvedValue(1);
     vi.spyOn(db, "updateMessageFields").mockResolvedValue(undefined);
   });
@@ -176,8 +184,8 @@ describe("DatabaseClient", () => {
       );
 
       expect(result).toEqual({
-        campaign_id: null,
-        campaign_name: null,
+        campaign_id: 999,
+        campaign_name: "Uncategorized",
         confidence: 0.1,
       });
 
