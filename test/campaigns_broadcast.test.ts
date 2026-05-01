@@ -11,6 +11,7 @@ vi.mock("../src/embedding_service", () => ({
 const { mockDbInstance, mockProcessReplyImmediately } = vi.hoisted(() => ({
   mockDbInstance: {
     request: vi.fn(),
+    getUserPoliticianIds: vi.fn(),
     getActiveTemplateForCampaign: vi.fn(),
     getSupportersForCampaign: vi.fn(),
     getCampaignBroadcastRecipients: vi.fn(),
@@ -65,6 +66,7 @@ describe("Campaign broadcast replies API", () => {
     vi.clearAllMocks();
     process.env.SUPABASE_URL = envNoJmap.SUPABASE_URL;
     process.env.SUPABASE_KEY = envNoJmap.SUPABASE_KEY;
+    mockDbInstance.getUserPoliticianIds.mockResolvedValue([1, 2]);
     mockGetUser.mockResolvedValue({
       data: { user: { id: "user-1", email: "u@example.com" } },
       error: null,
@@ -100,6 +102,23 @@ describe("Campaign broadcast replies API", () => {
       },
     );
   }
+
+  it("returns 403 when a recipient politician is outside the caller scope", async () => {
+    mockDbInstance.getUserPoliticianIds.mockResolvedValue([1]);
+    mockDbInstance.getSupportersForCampaign.mockResolvedValue([
+      { id: 1, campaign_id: 8, politician_id: 2, sender_hash: "h" },
+    ]);
+    mockDbInstance.getCampaignBroadcastRecipients.mockResolvedValue([
+      { politician_id: 2, sender_hash: "h", email: "x@example.com" },
+    ]);
+
+    const res = await app.fetch(broadcastReq("8", envNoJmap), envNoJmap);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.success).toBe(false);
+    expect(String(body.error)).toContain("Forbidden");
+    expect(mockProcessReplyImmediately).not.toHaveBeenCalled();
+  });
 
   it("returns 401 when Authorization is missing", async () => {
     const req = new Request(

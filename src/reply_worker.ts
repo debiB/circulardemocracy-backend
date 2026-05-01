@@ -2,6 +2,7 @@
 // Runs periodically to process pending and scheduled reply emails
 
 import type { DatabaseClient } from "./database";
+import { resolveOutboundEmailIdentity } from "./email_impersonation";
 import { renderEmailLayout } from "./email_layout";
 import { type EmailMessage, JMAPClient } from "./jmap_client";
 import {
@@ -17,6 +18,17 @@ export interface WorkerConfig {
 }
 
 type RuntimeSecretBindings = Record<string, string | undefined>;
+const FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS = [
+  "POLITICIAN_JMAP_EMAIL",
+  "POLITICIAN_JMAP_PASSWORD",
+  "POLITICIAN_JMAP_TOKEN",
+  "POLITICIAN_JMAP_ACCOUNT_ID",
+  "STALWART_JMAP_EMAIL",
+  "STALWART_JMAP_PASSWORD",
+  "STALWART_JMAP_USERNAME",
+  "STALWART_JMAP_TOKEN",
+] as const;
+
 const processEnv: Record<string, string | undefined> | undefined =
   typeof process !== "undefined" && process.env
     ? (process.env as Record<string, string | undefined>)
@@ -42,7 +54,6 @@ export interface ProcessingResult {
 }
 
 interface SendContext {
-  senderAddress: string;
   supporterId: number | null;
 }
 
@@ -98,7 +109,7 @@ export async function processScheduledReplies(
 
     return result;
   } catch (error) {
-    console.error("[Reply Worker] Fatal error:", error);
+    console.error("[Reply Worker] Fatal error");
     throw error;
   }
 }
@@ -142,7 +153,7 @@ async function getMessagesReadyToSend(
 
     return messages;
   } catch (error) {
-    console.error("Error fetching messages to send:", error);
+    console.error("Error fetching messages to send");
     throw error;
   }
 }
@@ -163,7 +174,7 @@ async function getMessageById(
       reply_retry_count: record.reply_retry_count ?? 0,
     };
   } catch (error) {
-    console.error("Error fetching message by ID:", error);
+    console.error("Error fetching message by ID");
     return null;
   }
 }
@@ -223,13 +234,19 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const fromAddress = (
-    campaign.technical_email?.trim() ||
-    politician.email?.trim() ||
-    ""
+  const outboundIdentity = resolveOutboundEmailIdentity(
+    {
+      id: politician.id,
+      name: politician.name,
+      email: politician.email,
+    },
+    {
+      technical_email: campaign.technical_email,
+      reply_to_email: campaign.reply_to_email,
+    },
   );
-  if (!fromAddress) {
-    const errorMsg = `No From address: set campaigns.technical_email for campaign ${message.campaign_id} or politicians.email for politician ${message.politician_id}`;
+  if (!outboundIdentity) {
+    const errorMsg = `No From/Reply-To: set campaigns.technical_email and/or politicians.email, and reply_to_email or politician email for campaign ${message.campaign_id} politician ${message.politician_id}`;
     await handleSendFailure(db, message, errorMsg);
     throw new Error(errorMsg);
   }
@@ -237,8 +254,7 @@ async function processSingleMessage(
   const sendContext = await buildSendContext(
     db,
     message,
-    senderEmail,
-    fromAddress,
+    outboundIdentity,
   );
 
   // 5. Render email content based on layout type
@@ -253,9 +269,10 @@ async function processSingleMessage(
 
   // 6. Build email message
   const email: EmailMessage = {
-    from: sendContext.senderAddress,
+    from: outboundIdentity.fromEmail,
+    fromName: outboundIdentity.fromDisplayName,
     to: [senderEmail],
-    replyTo: campaign.reply_to_email || politician.email,
+    replyTo: outboundIdentity.replyToEmail,
     subject: emailContent.subject,
     textBody: emailContent.textBody,
     htmlBody: emailContent.htmlBody,
@@ -265,7 +282,7 @@ async function processSingleMessage(
   const sendResult = await jmapClient.sendEmail(email);
 
   if (!sendResult.success) {
-    const errorMsg = `JMAP send failed: ${sendResult.error}`;
+    const errorMsg = "JMAP send failed";
     await db.logEmailEvent({
       message_id: message.id,
       campaign_id: message.campaign_id,
@@ -303,13 +320,14 @@ async function handleSendFailure(
   message: MessageToProcess,
   errorMsg: string,
 ): Promise<void> {
+  const safeError = sanitizeErrorMessage(errorMsg);
   const newRetryCount = message.reply_retry_count + 1;
 
   if (newRetryCount >= MAX_RETRY_ATTEMPTS) {
     // Exceeded max retries - mark as permanently failed
-    await db.markMessageAsFailed(message.id, errorMsg);
+    await db.markMessageAsFailed(message.id, safeError);
     console.error(
-      `[Reply Worker] Message ${message.id} permanently failed after ${MAX_RETRY_ATTEMPTS} attempts: ${errorMsg}`,
+      `[Reply Worker] Message ${message.id} permanently failed after ${MAX_RETRY_ATTEMPTS} attempts`,
     );
   } else {
     // Increment retry count and schedule a delayed re-mail attempt
@@ -321,11 +339,11 @@ async function handleSendFailure(
     await db.updateMessageRetryCount(
       message.id,
       newRetryCount,
-      errorMsg,
+      safeError,
       nextRetryAt,
     );
     console.warn(
-      `[Reply Worker] Message ${message.id} failed (attempt ${newRetryCount}/${MAX_RETRY_ATTEMPTS}), scheduled retry at ${nextRetryAt}: ${errorMsg}`,
+      `[Reply Worker] Message ${message.id} failed (attempt ${newRetryCount}/${MAX_RETRY_ATTEMPTS}), scheduled retry at ${nextRetryAt}`,
     );
   }
 }
@@ -333,10 +351,8 @@ async function handleSendFailure(
 async function buildSendContext(
   db: DatabaseClient,
   message: MessageToProcess,
-  _senderEmail: string,
-  campaignTechnicalEmail: string,
+  _identity: { fromEmail: string; replyToEmail: string; fromDisplayName: string },
 ): Promise<SendContext> {
-  const senderAddress = campaignTechnicalEmail;
   const supporterId = await db.upsertSupporter(
     message.campaign_id,
     message.politician_id,
@@ -344,7 +360,6 @@ async function buildSendContext(
     message.received_at,
   );
   return {
-    senderAddress,
     supporterId,
   };
 }
@@ -364,7 +379,7 @@ async function getCampaignById(
   try {
     return await db.getCampaignById(campaignId);
   } catch (error) {
-    console.error("Error fetching campaign:", error);
+    console.error("Error fetching campaign");
     return null;
   }
 }
@@ -383,7 +398,7 @@ async function getPoliticianById(
   try {
     return await db.getPoliticianById(politicianId);
   } catch (error) {
-    console.error("Error fetching politician:", error);
+    console.error("Error fetching politician");
     return null;
   }
 }
@@ -399,6 +414,9 @@ async function resolveSingleServiceAccountConfig(
     ...(processEnv || {}),
     ...(runtimeSecrets || {}),
   };
+  assertNoDynamicCredentialOverrides(
+    mergedBindings as RuntimeSecretBindings,
+  );
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
     return {
@@ -427,5 +445,22 @@ async function resolveSingleServiceAccountConfig(
     ok: true,
     config,
   };
+}
+
+function assertNoDynamicCredentialOverrides(env: RuntimeSecretBindings): void {
+  const forbidden = FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS.filter(
+    (key) => (env[key] || "").trim().length > 0,
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      "Dynamic/per-entity outbound credentials are forbidden; use only the single relay account configuration.",
+    );
+  }
+}
+
+function sanitizeErrorMessage(raw: string): string {
+  return raw
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .slice(0, 500);
 }
 

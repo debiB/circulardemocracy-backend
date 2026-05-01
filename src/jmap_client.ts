@@ -9,6 +9,8 @@ export interface JMAPConfig {
 
 export interface EmailMessage {
   from: string;
+  /** Display name for the From header (politician-facing identity). */
+  fromName?: string;
   to: string[];
   replyTo?: string;
   subject: string;
@@ -27,6 +29,10 @@ interface JmapSessionResponse {
   primaryAccounts?: Record<string, string>;
 }
 
+interface IdentityGetResponse {
+  list?: Array<{ id: string; email?: string | null }>;
+}
+
 /**
  * JMAP Client for sending emails
  */
@@ -36,8 +42,8 @@ export class JMAPClient {
   private resolvedPostApiUrl: string | null = null;
   /** Cached Sent mailbox id (JMAP requires opaque ids, not the label "Sent"). */
   private sentMailboxId: string | null = null;
-  /** Cached Identity/get id keyed by From address (lowercase). */
-  private readonly identityIdByFromEmail = new Map<string, string>();
+  /** Single service identity id used for all outbound submissions. */
+  private serviceIdentityId: string | null = null;
 
   constructor(config: JMAPConfig) {
     this.config = config;
@@ -73,10 +79,7 @@ export class JMAPClient {
       },
     });
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(
-        `JMAP session GET failed (${response.status}): ${body || "no body"}`,
-      );
+      throw new Error(`JMAP session GET failed (${response.status})`);
     }
     const session = (await response.json()) as JmapSessionResponse;
     if (!session?.apiUrl) {
@@ -107,10 +110,7 @@ export class JMAPClient {
       }),
     });
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `JMAP API request failed (${response.status}): ${errorText || "no body"}`,
-      );
+      throw new Error(`JMAP API request failed (${response.status})`);
     }
     return (await response.json()) as { methodResponses?: unknown[][] };
   }
@@ -193,18 +193,17 @@ export class JMAPClient {
     return id;
   }
 
-  /** Identity id for EmailSubmission/set (Identity/get, match From or *@domain). */
-  private async resolveIdentityId(
+  /**
+   * Resolve a single service identity for all submissions.
+   * Outbound header impersonation is supported via MIME headers only.
+   */
+  private async resolveServiceIdentityId(
     apiUrl: string,
     authHeader: string,
-    fromEmail: string,
   ): Promise<string> {
-    const normalized = fromEmail.trim().toLowerCase();
-    const hit = this.identityIdByFromEmail.get(normalized);
-    if (hit) {
-      return hit;
+    if (this.serviceIdentityId) {
+      return this.serviceIdentityId;
     }
-
     const json = await this.jmapPost(apiUrl, authHeader, [
       [
         "Identity/get",
@@ -223,36 +222,17 @@ export class JMAPClient {
       responses,
       "Identity/get",
       "identityGet",
-    ) as { list?: Array<{ id: string; email?: string | null }> };
+    ) as IdentityGetResponse;
 
-    const list = body.list ?? [];
-    let chosen: string | undefined;
-    for (const row of list) {
-      if (!row.email) {
-        continue;
-      }
-      const ident = row.email.trim().toLowerCase();
-      if (ident === normalized) {
-        chosen = row.id;
-        break;
-      }
-      if (ident.startsWith("*@")) {
-        const domain = ident.slice(2);
-        if (normalized.endsWith(`@${domain}`)) {
-          chosen = row.id;
-          break;
-        }
-      }
-    }
-
-    if (!chosen) {
+    const firstIdentity = body.list?.[0];
+    if (!firstIdentity?.id) {
       throw new Error(
-        `No JMAP Identity matches From "${fromEmail}". Add this address (or *@domain) as a send identity in Stalwart.`,
+        "No JMAP service identity found for relay account; configure at least one identity.",
       );
     }
 
-    this.identityIdByFromEmail.set(normalized, chosen);
-    return chosen;
+    this.serviceIdentityId = firstIdentity.id;
+    return this.serviceIdentityId;
   }
 
   /**
@@ -263,11 +243,7 @@ export class JMAPClient {
       const authHeader = this.authHeader();
       const apiUrl = await this.resolvePostApiUrl();
       const sentMailboxId = await this.resolveSentMailboxId(apiUrl, authHeader);
-      const identityId = await this.resolveIdentityId(
-        apiUrl,
-        authHeader,
-        email.from,
-      );
+      const identityId = await this.resolveServiceIdentityId(apiUrl, authHeader);
 
       const emailObject = this.buildEmailObject(email, sentMailboxId);
 
@@ -360,11 +336,11 @@ export class JMAPClient {
       }
 
       throw new Error("Unexpected JMAP response format");
-    } catch (error) {
-      console.error("JMAP send error:", error);
+    } catch (_error) {
+      console.error("JMAP send failed");
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "JMAP send failed",
       };
     }
   }
@@ -373,11 +349,15 @@ export class JMAPClient {
    * Builds a JMAP email object from our simplified EmailMessage format
    */
   private buildEmailObject(email: EmailMessage, sentMailboxId: string): any {
+    const fromEntry: { email: string; name?: string } = { email: email.from };
+    if (email.fromName?.trim()) {
+      fromEntry.name = email.fromName.trim();
+    }
     const emailObj: any = {
       mailboxIds: {
         [sentMailboxId]: true,
       },
-      from: [{ email: email.from }],
+      from: [fromEntry],
       to: email.to.map((addr) => ({ email: addr })),
       subject: email.subject,
     };

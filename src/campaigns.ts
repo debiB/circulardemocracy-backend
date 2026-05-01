@@ -1,5 +1,10 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { authMiddleware, requireAppRole } from "./auth";
+import {
+  authMiddleware,
+  canAccessPoliticianId,
+  type AuthContext,
+  requireAppRole,
+} from "./auth";
 import type { DatabaseClient } from "./database";
 import { processReplyImmediately } from "./reply_worker";
 import { calculateReplySchedule } from "./scheduling";
@@ -13,6 +18,7 @@ interface Env extends MailSendBindings {
 
 interface Variables {
   db: DatabaseClient;
+  auth: AuthContext;
 }
 
 const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
@@ -231,6 +237,7 @@ const broadcastRepliesRoute = createRoute({
 
 app.openapi(broadcastRepliesRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
+  const auth = c.get("auth") as AuthContext;
   const { id } = c.req.valid("param");
   const campaignId = Number.parseInt(id, 10);
   const activeTemplate = await db.getActiveTemplateForCampaign(campaignId);
@@ -259,6 +266,25 @@ app.openapi(broadcastRepliesRoute, async (c) => {
 
   // Build broadcast recipients from long-term supporter hashes + short-term contacts
   const recipients = await db.getCampaignBroadcastRecipients(campaignId);
+  if (auth.role !== "admin") {
+    for (const row of recipients) {
+      if (!canAccessPoliticianId(auth, row.politician_id)) {
+        return c.json(
+          {
+            success: false,
+            campaign_id: campaignId,
+            supporter_count: supporterRows.length,
+            recipient_count: recipients.length,
+            messages_created: 0,
+            failures: 0,
+            error:
+              "Forbidden: broadcast includes supporters outside your assigned politician scope",
+          },
+          403,
+        );
+      }
+    }
+  }
   if (recipients.length === 0) {
     const errorMessage =
       supporterRows.length === 0
@@ -312,7 +338,6 @@ app.openapi(broadcastRepliesRoute, async (c) => {
       console.error(
         "Failed to create broadcast message for supporter:",
         recipient.sender_hash,
-        error,
       );
       failures++;
     }
@@ -344,7 +369,6 @@ app.openapi(broadcastRepliesRoute, async (c) => {
         console.error(
           "Broadcast JMAP send failed for message",
           messageId,
-          error,
         );
       }
     }

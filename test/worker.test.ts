@@ -739,7 +739,7 @@ describe("Reply Worker", () => {
       const result = await processScheduledReplies(mockDb, runtimeSecrets);
 
       expect(result.failed).toBe(1);
-      expect(result.errors[0].error).toContain("No From address");
+      expect(result.errors[0].error).toContain("No From/Reply-To");
       expect(mockDb.updateMessageRetryCount).toHaveBeenCalled();
       expect(JMAPClient.prototype.sendEmail).not.toHaveBeenCalled();
     });
@@ -952,6 +952,8 @@ describe("Reply Worker", () => {
       expect(JMAPClient.prototype.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           from: "outbound@campaign.example",
+          fromName: "Politician",
+          replyTo: "pol@example.com",
           to: ["voter@example.com"],
         }),
       );

@@ -195,8 +195,8 @@ export async function processMessage(
   if (replySchedule?.send_immediately && immediateReplyHandler) {
     try {
       await immediateReplyHandler(messageId);
-    } catch (error) {
-      console.error("Immediate reply send failed:", error);
+    } catch (_error) {
+      console.error("Immediate reply send failed");
     }
   }
 

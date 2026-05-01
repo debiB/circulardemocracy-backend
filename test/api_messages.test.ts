@@ -129,6 +129,22 @@ describe("Messages API Integration", () => {
     expect(res.status).toBe(401);
   });
 
+  it("should return 403 if politician is outside the caller scope", async () => {
+    mockDbInstance.findPoliticianByEmail.mockResolvedValue({ id: 1 });
+    mockDbInstance.getUserPoliticianIds.mockResolvedValue([99]);
+
+    const req = new Request("http://localhost/api/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer valid-jwt",
+      },
+      body: JSON.stringify(validMessage),
+    });
+    const res = await app.fetch(req, env);
+    expect(res.status).toBe(403);
+  });
+
   it("should return 404 if politician is not found", async () => {
     mockDbInstance.findPoliticianByEmail.mockResolvedValue(null);
 
