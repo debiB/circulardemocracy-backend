@@ -1,6 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { createClient } from "@supabase/supabase-js";
-import { authMiddleware } from "./auth";
+import { authMiddleware, requireAppRole } from "./auth";
 import type { DatabaseClient } from "./database";
 
 // Define types for env and app
@@ -17,6 +17,10 @@ const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
 
 // Apply auth middleware to all routes in this file
 app.use("/api/v1/messages/analytics", authMiddleware);
+app.use(
+  "/api/v1/messages/analytics",
+  requireAppRole("politician", "staff", "admin"),
+);
 
 // =============================================================================
 // SCHEMAS

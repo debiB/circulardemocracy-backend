@@ -624,15 +624,18 @@ This API is designed to be deployed as a Cloudflare Worker. The `wrangler` CLI, 
 
 2.  **Set Up Secrets**
 
-    The worker needs Supabase credentials. For outbound JMAP replies, credentials are resolved per politician from database fields and a per-politician secret name.
+    The worker needs Supabase credentials. Outbound JMAP replies use one shared relay service account for JMAP authentication.
 
     Run the following commands, pasting values when prompted:
 
     ```bash
     npx wrangler secret put SUPABASE_URL
     npx wrangler secret put SUPABASE_KEY
-    # Per-politician secrets referenced by name from DB, for example:
-    npx wrangler secret put POL_42_STALWART_APP_PASSWORD
+    npx wrangler secret put STALWART_JMAP_ENDPOINT
+    npx wrangler secret put STALWART_JMAP_ACCOUNT_ID
+    npx wrangler secret put SUPABASE_ANON_KEY
+    npx wrangler secret put STALWART_SUPABASE_RELAY_EMAIL
+    npx wrangler secret put STALWART_SUPABASE_RELAY_PASSWORD
     ```
 
 3.  **Deploy the Worker**
@@ -675,37 +678,15 @@ The platform is designed with privacy-by-design principles:
 
 ## Outbound JMAP Credential Resolution
 
-Reply sending requires per-politician credentials on `politicians`:
+Reply sending uses one service account for JMAP authentication across all politicians:
 
-- `stalwart_jmap_endpoint`
-- `stalwart_jmap_account_id`
-- `stalwart_username`
-- `stalwart_app_password_secret_name` (resolves to runtime secret value)
+- `STALWART_JMAP_ENDPOINT`
+- `STALWART_JMAP_ACCOUNT_ID`
+- `SUPABASE_ANON_KEY`
+- `STALWART_SUPABASE_RELAY_EMAIL`
+- `STALWART_SUPABASE_RELAY_PASSWORD`
 
-Configure credentials via CLI:
-
-```bash
-npx tsx bin/cli set-politician-jmap \
-  --id 3 \
-  --stalwart-jmap-endpoint "https://mail.circulardemocracy.org/.well-known/jmap" \
-  --stalwart-jmap-account-id "7" \
-  --stalwart-username "politician-1@circulardemocracy.org" \
-  --stalwart-app-password "caeke yroa ldhq uscy ghb"
-```
-
-This command stores endpoint/account/username on `politicians`, generates a secret name (`POL_<id>_STALWART_APP_PASSWORD` by default), and writes the password to `.env` under that key. The same command can be used later to update any subset of fields.
-
-At **runtime**, the reply worker resolves the password from Worker bindings (`c.env`) first, then from `process.env` (so local `.env` loaded by `wrangler dev` / Node still works). **Production** must define the same key as a Cloudflare secret, for example:
-
-```bash
-npx wrangler secret put POL_3_STALWART_APP_PASSWORD
-```
-
-For local-only, matching `.env` line:
-
-```bash
-POL_3_STALWART_APP_PASSWORD="your-politician-app-password"
-```
+At runtime, the reply worker resolves these values from Worker bindings (`c.env`) and local `.env` (`process.env`) for development.
 
 ## Reply deduplication and persistence
 

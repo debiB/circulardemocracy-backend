@@ -2,17 +2,33 @@
 // Runs periodically to process pending and scheduled reply emails
 
 import type { DatabaseClient } from "./database";
+import { resolveOutboundEmailIdentity } from "./email_impersonation";
 import { renderEmailLayout } from "./email_layout";
 import { type EmailMessage, JMAPClient } from "./jmap_client";
+import {
+  resolveStalwartJmapWorkerConfig,
+  type MailSendBindings,
+} from "./stalwart_jmap_env";
+import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
 
 export interface WorkerConfig {
   jmapApiUrl: string;
   jmapAccountId: string;
-  jmapUsername: string;
-  jmapPassword: string;
+  jmapBearerToken: string;
 }
 
 type RuntimeSecretBindings = Record<string, string | undefined>;
+const FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS = [
+  "POLITICIAN_JMAP_EMAIL",
+  "POLITICIAN_JMAP_PASSWORD",
+  "POLITICIAN_JMAP_TOKEN",
+  "POLITICIAN_JMAP_ACCOUNT_ID",
+  "STALWART_JMAP_EMAIL",
+  "STALWART_JMAP_PASSWORD",
+  "STALWART_JMAP_USERNAME",
+  "STALWART_JMAP_TOKEN",
+] as const;
+
 const processEnv: Record<string, string | undefined> | undefined =
   typeof process !== "undefined" && process.env
     ? (process.env as Record<string, string | undefined>)
@@ -38,7 +54,6 @@ export interface ProcessingResult {
 }
 
 interface SendContext {
-  senderAddress: string;
   supporterId: number | null;
 }
 
@@ -94,7 +109,7 @@ export async function processScheduledReplies(
 
     return result;
   } catch (error) {
-    console.error("[Reply Worker] Fatal error:", error);
+    console.error("[Reply Worker] Fatal error");
     throw error;
   }
 }
@@ -138,7 +153,7 @@ async function getMessagesReadyToSend(
 
     return messages;
   } catch (error) {
-    console.error("Error fetching messages to send:", error);
+    console.error("Error fetching messages to send");
     throw error;
   }
 }
@@ -159,7 +174,7 @@ async function getMessageById(
       reply_retry_count: record.reply_retry_count ?? 0,
     };
   } catch (error) {
-    console.error("Error fetching message by ID:", error);
+    console.error("Error fetching message by ID");
     return null;
   }
 }
@@ -172,6 +187,14 @@ async function processSingleMessage(
   message: MessageToProcess,
   runtimeSecrets?: RuntimeSecretBindings,
 ): Promise<void> {
+  const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
+  if (!jmapResolve.ok) {
+    const errorMsg = jmapResolve.reason;
+    await handleSendFailure(db, message, errorMsg);
+    throw new Error(errorMsg);
+  }
+  const jmapConfig = jmapResolve.config;
+
   // 1. Get the active reply template for this campaign
   const template = await db.getActiveTemplateForCampaign(message.campaign_id);
 
@@ -189,22 +212,10 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const jmapResolve = resolveJmapConfigForPolitician(
-    politician,
-    runtimeSecrets,
-  );
-  if (!jmapResolve.ok) {
-    const errorMsg = jmapResolve.reason;
-    await handleSendFailure(db, message, errorMsg);
-    throw new Error(errorMsg);
-  }
-  const jmapConfig = jmapResolve.config;
-
   const jmapClient = new JMAPClient({
     apiUrl: jmapConfig.jmapApiUrl,
     accountId: jmapConfig.jmapAccountId,
-    username: jmapConfig.jmapUsername,
-    password: jmapConfig.jmapPassword,
+    bearerToken: jmapConfig.jmapBearerToken,
   });
 
   // 3. Resolve recipient email from short-term contact storage
@@ -223,13 +234,19 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const fromAddress = (
-    campaign.technical_email?.trim() ||
-    politician.email?.trim() ||
-    ""
+  const outboundIdentity = resolveOutboundEmailIdentity(
+    {
+      id: politician.id,
+      name: politician.name,
+      email: politician.email,
+    },
+    {
+      technical_email: campaign.technical_email,
+      reply_to_email: campaign.reply_to_email,
+    },
   );
-  if (!fromAddress) {
-    const errorMsg = `No From address: set campaigns.technical_email for campaign ${message.campaign_id} or politicians.email for politician ${message.politician_id}`;
+  if (!outboundIdentity) {
+    const errorMsg = `No From/Reply-To: set campaigns.technical_email and/or politicians.email, and reply_to_email or politician email for campaign ${message.campaign_id} politician ${message.politician_id}`;
     await handleSendFailure(db, message, errorMsg);
     throw new Error(errorMsg);
   }
@@ -237,8 +254,7 @@ async function processSingleMessage(
   const sendContext = await buildSendContext(
     db,
     message,
-    senderEmail,
-    fromAddress,
+    outboundIdentity,
   );
 
   // 5. Render email content based on layout type
@@ -253,9 +269,10 @@ async function processSingleMessage(
 
   // 6. Build email message
   const email: EmailMessage = {
-    from: sendContext.senderAddress,
+    from: outboundIdentity.fromEmail,
+    fromName: outboundIdentity.fromDisplayName,
     to: [senderEmail],
-    replyTo: campaign.reply_to_email || politician.email,
+    replyTo: outboundIdentity.replyToEmail,
     subject: emailContent.subject,
     textBody: emailContent.textBody,
     htmlBody: emailContent.htmlBody,
@@ -265,7 +282,7 @@ async function processSingleMessage(
   const sendResult = await jmapClient.sendEmail(email);
 
   if (!sendResult.success) {
-    const errorMsg = `JMAP send failed: ${sendResult.error}`;
+    const errorMsg = "JMAP send failed";
     await db.logEmailEvent({
       message_id: message.id,
       campaign_id: message.campaign_id,
@@ -303,13 +320,14 @@ async function handleSendFailure(
   message: MessageToProcess,
   errorMsg: string,
 ): Promise<void> {
+  const safeError = sanitizeErrorMessage(errorMsg);
   const newRetryCount = message.reply_retry_count + 1;
 
   if (newRetryCount >= MAX_RETRY_ATTEMPTS) {
     // Exceeded max retries - mark as permanently failed
-    await db.markMessageAsFailed(message.id, errorMsg);
+    await db.markMessageAsFailed(message.id, safeError);
     console.error(
-      `[Reply Worker] Message ${message.id} permanently failed after ${MAX_RETRY_ATTEMPTS} attempts: ${errorMsg}`,
+      `[Reply Worker] Message ${message.id} permanently failed after ${MAX_RETRY_ATTEMPTS} attempts`,
     );
   } else {
     // Increment retry count and schedule a delayed re-mail attempt
@@ -321,11 +339,11 @@ async function handleSendFailure(
     await db.updateMessageRetryCount(
       message.id,
       newRetryCount,
-      errorMsg,
+      safeError,
       nextRetryAt,
     );
     console.warn(
-      `[Reply Worker] Message ${message.id} failed (attempt ${newRetryCount}/${MAX_RETRY_ATTEMPTS}), scheduled retry at ${nextRetryAt}: ${errorMsg}`,
+      `[Reply Worker] Message ${message.id} failed (attempt ${newRetryCount}/${MAX_RETRY_ATTEMPTS}), scheduled retry at ${nextRetryAt}`,
     );
   }
 }
@@ -333,10 +351,8 @@ async function handleSendFailure(
 async function buildSendContext(
   db: DatabaseClient,
   message: MessageToProcess,
-  _senderEmail: string,
-  campaignTechnicalEmail: string,
+  _identity: { fromEmail: string; replyToEmail: string; fromDisplayName: string },
 ): Promise<SendContext> {
-  const senderAddress = campaignTechnicalEmail;
   const supporterId = await db.upsertSupporter(
     message.campaign_id,
     message.politician_id,
@@ -344,7 +360,6 @@ async function buildSendContext(
     message.received_at,
   );
   return {
-    senderAddress,
     supporterId,
   };
 }
@@ -364,7 +379,7 @@ async function getCampaignById(
   try {
     return await db.getCampaignById(campaignId);
   } catch (error) {
-    console.error("Error fetching campaign:", error);
+    console.error("Error fetching campaign");
     return null;
   }
 }
@@ -379,15 +394,11 @@ async function getPoliticianById(
   id: number;
   email: string;
   name: string;
-  stalwart_jmap_endpoint: string | null;
-  stalwart_jmap_account_id: string | null;
-  stalwart_username: string | null;
-  stalwart_app_password_secret_name: string | null;
 } | null> {
   try {
     return await db.getPoliticianById(politicianId);
   } catch (error) {
-    console.error("Error fetching politician:", error);
+    console.error("Error fetching politician");
     return null;
   }
 }
@@ -396,86 +407,60 @@ type JmapResolveResult =
   | { ok: true; config: WorkerConfig }
   | { ok: false; reason: string };
 
-function resolveJmapConfigForPolitician(
-  politician: {
-    id: number;
-    email: string;
-    stalwart_jmap_endpoint: string | null;
-    stalwart_jmap_account_id: string | null;
-    stalwart_username: string | null;
-    stalwart_app_password_secret_name: string | null;
-  },
+async function resolveSingleServiceAccountConfig(
   runtimeSecrets?: RuntimeSecretBindings,
-): JmapResolveResult {
-  const secretName = politician.stalwart_app_password_secret_name?.trim() || "";
-  const secretPassword = secretName
-    ? resolveRuntimeSecret(secretName, runtimeSecrets)
-    : "";
-  const jmapApiUrl = String(politician.stalwart_jmap_endpoint ?? "").trim();
-  const accountRaw = politician.stalwart_jmap_account_id;
-  const jmapAccountId =
-    (accountRaw != null && String(accountRaw).trim()) ||
-    politician.email?.trim() ||
-    "";
-  const jmapUsername = String(politician.stalwart_username ?? "").trim();
-  const jmapPassword = secretPassword;
+): Promise<JmapResolveResult> {
+  const mergedBindings: MailSendBindings = {
+    ...(processEnv || {}),
+    ...(runtimeSecrets || {}),
+  };
+  assertNoDynamicCredentialOverrides(
+    mergedBindings as RuntimeSecretBindings,
+  );
+  const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
+  if (!baseConfig) {
+    return {
+      ok: false,
+      reason:
+        "Single JMAP relay service account is not configured. Set STALWART_JMAP_ENDPOINT and STALWART_JMAP_ACCOUNT_ID.",
+    };
+  }
 
-  if (!jmapApiUrl) {
+  const relayToken = await getSupabaseRelayAccessToken(
+    mergedBindings as RuntimeSecretBindings,
+  );
+  if (!relayToken) {
     return {
       ok: false,
-      reason: `Politician ${politician.id}: stalwart_jmap_endpoint is missing in DB`,
+      reason:
+        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, STALWART_SUPABASE_RELAY_EMAIL, and STALWART_SUPABASE_RELAY_PASSWORD.",
     };
   }
-  if (!jmapAccountId) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: stalwart_jmap_account_id (or email) is missing in DB`,
-    };
-  }
-  if (!jmapUsername) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: stalwart_username is missing in DB`,
-    };
-  }
-  if (!secretName) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: stalwart_app_password_secret_name is missing in DB`,
-    };
-  }
-  if (!jmapPassword) {
-    return {
-      ok: false,
-      reason: `Politician ${politician.id}: app password not found in runtime for secret name "${secretName}". Add it to the Worker (wrangler secret put ${secretName}) or local .env for dev.`,
-    };
-  }
+  const config: WorkerConfig = {
+    ...baseConfig,
+    jmapBearerToken: relayToken,
+  };
 
   return {
     ok: true,
-    config: {
-      jmapApiUrl,
-      jmapAccountId,
-      jmapUsername,
-      jmapPassword,
-    },
+    config,
   };
 }
 
-function resolveRuntimeSecret(
-  key: string,
-  runtimeSecrets?: RuntimeSecretBindings,
-): string {
-  const fromBindings = String(runtimeSecrets?.[key] ?? "").trim();
-  if (fromBindings) {
-    return fromBindings;
+function assertNoDynamicCredentialOverrides(env: RuntimeSecretBindings): void {
+  const forbidden = FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS.filter(
+    (key) => (env[key] || "").trim().length > 0,
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      "Dynamic/per-entity outbound credentials are forbidden; use only the single relay account configuration.",
+    );
   }
+}
 
-  const fromProcessEnv = String(processEnv?.[key] ?? "").trim();
-  if (fromProcessEnv) {
-    return fromProcessEnv;
-  }
-
-  return "";
+function sanitizeErrorMessage(raw: string): string {
+  return raw
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .slice(0, 500);
 }
 

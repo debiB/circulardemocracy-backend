@@ -11,7 +11,12 @@ import {
 
 describe("Reply Worker", () => {
   const runtimeSecrets = {
-    POL_1_STALWART_APP_PASSWORD: "pass",
+    STALWART_JMAP_ENDPOINT: "https://jmap.example.com/.well-known/jmap",
+    STALWART_JMAP_ACCOUNT_ID: "account-1",
+    SUPABASE_URL: "https://test.supabase.co",
+    SUPABASE_ANON_KEY: "anon-key",
+    STALWART_SUPABASE_RELAY_EMAIL: "relay@example.com",
+    STALWART_SUPABASE_RELAY_PASSWORD: "relay-pass",
   };
 
   const mockDb = {
@@ -38,6 +43,19 @@ describe("Reply Worker", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("/auth/v1/token?grant_type=password")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "supabase-relay-token",
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    });
     vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([]);
     vi.spyOn(mockDb, "getMessageReadyToSendById").mockResolvedValue(null);
     vi.spyOn(mockDb, "getCampaignById").mockResolvedValue({
@@ -50,10 +68,6 @@ describe("Reply Worker", () => {
       id: 1,
       email: "politician@example.com",
       name: "Test Politician",
-      stalwart_jmap_endpoint: "https://jmap.example.com",
-      stalwart_jmap_account_id: "account-1",
-      stalwart_username: "user",
-      stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
     });
     vi.spyOn(mockDb, "markMessageAsSent").mockResolvedValue(undefined);
     vi.spyOn(mockDb, "upsertSupporter").mockResolvedValue(1);
@@ -477,10 +491,6 @@ describe("Reply Worker", () => {
               id: 1,
               name: "Jane Doe",
               email: "jane@pol.com",
-              stalwart_jmap_endpoint: "https://jmap.example.com",
-              stalwart_jmap_account_id: "account-1",
-              stalwart_username: "user",
-              stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
             },
           ],
           error: null,
@@ -498,10 +508,6 @@ describe("Reply Worker", () => {
         id: 1,
         name: "Jane Doe",
         email: "jane@pol.com",
-        stalwart_jmap_endpoint: "https://jmap.example.com",
-        stalwart_jmap_account_id: "account-1",
-        stalwart_username: "user",
-        stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
       });
       vi.spyOn(mockDb, "markMessageAsSent").mockResolvedValue(undefined);
 
@@ -582,10 +588,6 @@ describe("Reply Worker", () => {
               id: 1,
               name: "Jane Doe",
               email: "jane@pol.com",
-              stalwart_jmap_endpoint: "https://jmap.example.com",
-              stalwart_jmap_account_id: "account-1",
-              stalwart_username: "user",
-              stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
             },
           ],
           error: null,
@@ -603,10 +605,6 @@ describe("Reply Worker", () => {
         id: 1,
         name: "Jane Doe",
         email: "jane@pol.com",
-        stalwart_jmap_endpoint: "https://jmap.example.com",
-        stalwart_jmap_account_id: "account-1",
-        stalwart_username: "user",
-        stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
       });
       vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue({
         id: 1,
@@ -682,10 +680,6 @@ describe("Reply Worker", () => {
               id: 1,
               name: "Jane Doe",
               email: "",
-              stalwart_jmap_endpoint: "https://jmap.example.com",
-              stalwart_jmap_account_id: "account-1",
-              stalwart_username: "user",
-              stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
             },
           ],
           error: null,
@@ -718,10 +712,6 @@ describe("Reply Worker", () => {
         id: 1,
         name: "Jane Doe",
         email: "",
-        stalwart_jmap_endpoint: "https://jmap.example.com",
-        stalwart_jmap_account_id: "account-1",
-        stalwart_username: "user",
-        stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
       });
       vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue({
         id: 1,
@@ -749,7 +739,7 @@ describe("Reply Worker", () => {
       const result = await processScheduledReplies(mockDb, runtimeSecrets);
 
       expect(result.failed).toBe(1);
-      expect(result.errors[0].error).toContain("No From address");
+      expect(result.errors[0].error).toContain("No From/Reply-To");
       expect(mockDb.updateMessageRetryCount).toHaveBeenCalled();
       expect(JMAPClient.prototype.sendEmail).not.toHaveBeenCalled();
     });
@@ -882,10 +872,6 @@ describe("Reply Worker", () => {
         id: 1,
         name: "Politician",
         email: "pol@example.com",
-        stalwart_jmap_endpoint: "https://jmap.example.com",
-        stalwart_jmap_account_id: "account-1",
-        stalwart_username: "user",
-        stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
       });
 
       const messagesById = {
@@ -919,10 +905,6 @@ describe("Reply Worker", () => {
               id: 1,
               name: "Politician",
               email: "pol@example.com",
-              stalwart_jmap_endpoint: "https://jmap.example.com",
-              stalwart_jmap_account_id: "account-1",
-              stalwart_username: "user",
-              stalwart_app_password_secret_name: "POL_1_STALWART_APP_PASSWORD",
             },
           ],
           error: null,
@@ -970,6 +952,8 @@ describe("Reply Worker", () => {
       expect(JMAPClient.prototype.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           from: "outbound@campaign.example",
+          fromName: "Politician",
+          replyTo: "pol@example.com",
           to: ["voter@example.com"],
         }),
       );

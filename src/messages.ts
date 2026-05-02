@@ -1,4 +1,10 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+  authMiddleware,
+  canAccessPoliticianId,
+  type AuthContext,
+  requireAppRole,
+} from "./auth";
 import type { DatabaseClient } from "./database";
 import {
   type Ai,
@@ -18,9 +24,12 @@ interface Env extends MailSendBindings {
 
 interface Variables {
   db: DatabaseClient;
+  auth: AuthContext;
 }
 
 const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
+app.use("/api/v1/messages", authMiddleware);
+app.use("/api/v1/messages", requireAppRole("politician", "staff", "admin"));
 
 // Schemas specific to message processing
 const MessageInputSchema = z.object({
@@ -104,7 +113,7 @@ const messageRoute = createRoute({
   },
   security: [
     {
-      bearerAuth: [],
+      Bearer: [],
     },
   ],
   responses: {
@@ -130,7 +139,15 @@ const messageRoute = createRoute({
           schema: ErrorResponseSchema,
         },
       },
-      description: "Unauthorized - Invalid API Key",
+      description: "Unauthorized - Invalid or missing Supabase JWT",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: ErrorResponseSchema,
+        },
+      },
+      description: "Forbidden",
     },
     404: {
       content: {
@@ -166,9 +183,30 @@ const messageRoute = createRoute({
 // The handler for the message route
 app.openapi(messageRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
+  const auth = c.get("auth") as AuthContext | undefined;
+  if (!auth) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
 
   try {
     const data = c.req.valid("json");
+    const politicianForAccess = await db.findPoliticianByEmail(
+      data.recipient_email,
+    );
+    if (!politicianForAccess) {
+      return c.json(
+        {
+          success: false,
+          status: "politician_not_found" as const,
+          errors: [`No politician found for email: ${data.recipient_email}`],
+        },
+        404,
+      );
+    }
+    if (!canAccessPoliticianId(auth, politicianForAccess.id)) {
+      return c.json({ success: false, error: "Forbidden" }, 403);
+    }
+
     const runtimeSecrets =
       c.env as unknown as Record<string, string | undefined>;
     const result = await processMessage(
@@ -205,14 +243,14 @@ app.openapi(messageRoute, async (c) => {
       return c.json(
         {
           success: false,
-          status: "politician_not_found",
+          status: "politician_not_found" as const,
           errors: [error.message],
         },
         404,
       );
     }
 
-    console.error("Message processing error:", error);
+    console.error("Message processing error");
     return c.json(
       {
         success: false,

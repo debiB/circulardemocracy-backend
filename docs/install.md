@@ -22,8 +22,12 @@ Create a `.env` file in the root directory with the following variables:
 SUPABASE_URL=your-supabase-url
 SUPABASE_KEY=your-supabase-key
 
-# Per-politician secret example (preferred):
-POL_42_STALWART_APP_PASSWORD=your-politician-app-password
+# Single outbound JMAP relay service account (required):
+STALWART_JMAP_ENDPOINT=https://mail.example.org/.well-known/jmap
+STALWART_JMAP_ACCOUNT_ID=7
+SUPABASE_ANON_KEY=your-supabase-anon-key
+STALWART_SUPABASE_RELAY_EMAIL=relay-user@example.org
+STALWART_SUPABASE_RELAY_PASSWORD=relay-user-password
 ```
 
 ### 2. Database Migration Setup
@@ -46,30 +50,19 @@ npm run db:push
 - `SUPABASE_URL`: Your Supabase project URL
 - `SUPABASE_KEY`: Your Supabase service key
 
-Per-politician JMAP credentials are stored on `politicians` and resolved at send time:
+Outbound replies use one global service account for authentication:
 
-- `stalwart_jmap_endpoint`
-- `stalwart_jmap_account_id`
-- `stalwart_username`
-- `stalwart_app_password_secret_name` (references runtime secret; required for password)
+- `STALWART_JMAP_ENDPOINT`
+- `STALWART_JMAP_ACCOUNT_ID`
+- `SUPABASE_ANON_KEY`
+- `STALWART_SUPABASE_RELAY_EMAIL`
+- `STALWART_SUPABASE_RELAY_PASSWORD`
 
 ### Optional Variables
 
-- `POL_<politician_id>_STALWART_APP_PASSWORD`: per-politician app password secret values referenced from `politicians.stalwart_app_password_secret_name` (reply worker reads `c.env` then `process.env`)
+### Configure Service Account Credentials
 
-### Configure Per-Politician Credentials
-
-From the `circulardemocracy-backend` directory (see main README):
-
-```bash
-npx tsx bin/cli set-politician-jmap --id <politician-id> \
-  --stalwart-jmap-endpoint "<jmap-session-url>" \
-  --stalwart-jmap-account-id "<account-id>" \
-  --stalwart-username "<jmap-username>" \
-  --stalwart-app-password "<app-password>"
-```
-
-Then ensure the generated secret name exists in the **same** runtime as the API (local `.env` or `wrangler secret put POL_<id>_STALWART_APP_PASSWORD` in production).
+Set the four `STALWART_*` variables above in the same runtime as the API (`.env` locally, Worker secrets in production).
 
 ### Reply sends (brief)
 
@@ -89,8 +82,11 @@ npx wrangler login
 # 2. Set up secrets (required for production)
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_KEY
-# Per-politician password secret example:
-npx wrangler secret put POL_42_STALWART_APP_PASSWORD
+npx wrangler secret put STALWART_JMAP_ENDPOINT
+npx wrangler secret put STALWART_JMAP_ACCOUNT_ID
+npx wrangler secret put SUPABASE_ANON_KEY
+npx wrangler secret put STALWART_SUPABASE_RELAY_EMAIL
+npx wrangler secret put STALWART_SUPABASE_RELAY_PASSWORD
 
 # 3. Deploy the worker
 npm run deploy
