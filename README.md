@@ -693,7 +693,6 @@ The reply worker and related code require **all** of the following (see `resolve
 | `STALWART_SUPABASE_RELAY_EMAIL` | Email of the **dedicated Supabase user** (relay account) whose password grant produces the JWT Stalwart accepts for JMAP. |
 | `STALWART_SUPABASE_RELAY_PASSWORD` | Password for that relay Supabase user (store as a secret in production). |
 
-Per-politician JMAP credentials in environment variables are **not** supported on this path; do not set `POLITICIAN_JMAP_*` or legacy `STALWART_JMAP_PASSWORD` / `STALWART_JMAP_TOKEN` style overrides for outbound send—the worker rejects them.
 
 At runtime, the reply worker reads these values from **Cloudflare Worker** bindings (`c.env`) or from **local** `.env` (`process.env`) when running under `serve.ts` or tests. For deployed workers, set the same names with `wrangler secret put` (see [Set Up Secrets](#deployment) above).
 
