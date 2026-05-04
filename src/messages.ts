@@ -11,8 +11,14 @@ import {
   PoliticianNotFoundError,
   processMessage,
 } from "./message_processor";
+import { sanitizeEmailHtml } from "./email_content_sanitizer";
+import { JMAPClient } from "./jmap_client";
 import { processReplyImmediately } from "./reply_worker";
-import { type MailSendBindings } from "./stalwart_jmap_env";
+import {
+  type MailSendBindings,
+  resolveStalwartJmapWorkerConfig,
+} from "./stalwart_jmap_env";
+import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
 
 // Define types for env and app
 interface Env extends MailSendBindings {
@@ -30,6 +36,11 @@ interface Variables {
 const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
 app.use("/api/v1/messages", authMiddleware);
 app.use("/api/v1/messages", requireAppRole("politician", "staff", "admin"));
+app.use("/api/v1/messages/*", authMiddleware);
+app.use(
+  "/api/v1/messages/*",
+  requireAppRole("politician", "staff", "admin"),
+);
 
 // Schemas specific to message processing
 const MessageInputSchema = z.object({
@@ -96,6 +107,22 @@ const ErrorResponseSchema = z.object({
   success: z.boolean().default(false),
   error: z.string(),
   details: z.string().optional(),
+});
+
+const MessageContentResponseSchema = z.object({
+  success: z.literal(true),
+  message_id: z.number(),
+  subject: z.string(),
+  received_at: z.string().nullable(),
+  from: z.array(z.string()),
+  to: z.array(z.string()),
+  html_content: z.string().nullable(),
+  text_content: z.string().nullable(),
+});
+
+const MessageContentErrorSchema = z.object({
+  success: z.literal(false),
+  error: z.string(),
 });
 
 // The message processing route definition
@@ -257,6 +284,146 @@ app.openapi(messageRoute, async (c) => {
         error: "Internal server error",
         details: error instanceof Error ? error.message : "Unknown error",
       },
+      500,
+    );
+  }
+});
+
+const messageContentRoute = createRoute({
+  method: "get",
+  path: "/api/v1/messages/{id}/content",
+  request: {
+    params: z.object({
+      id: z.coerce.number().int().positive(),
+    }),
+  },
+  security: [{ Bearer: [] }],
+  responses: {
+    200: {
+      content: {
+        "application/json": {
+          schema: MessageContentResponseSchema,
+        },
+      },
+      description: "Message content fetched from mailbox",
+    },
+    401: {
+      content: {
+        "application/json": {
+          schema: MessageContentErrorSchema,
+        },
+      },
+      description: "Unauthorized",
+    },
+    403: {
+      content: {
+        "application/json": {
+          schema: MessageContentErrorSchema,
+        },
+      },
+      description: "Forbidden",
+    },
+    404: {
+      content: {
+        "application/json": {
+          schema: MessageContentErrorSchema,
+        },
+      },
+      description: "Message not found",
+    },
+    500: {
+      content: {
+        "application/json": {
+          schema: MessageContentErrorSchema,
+        },
+      },
+      description: "Unable to fetch mailbox content",
+    },
+  },
+  tags: ["Messages"],
+  summary: "/api/v1/messages/{id}/content",
+  description:
+    "Fetch sanitized message content using DB mailbox references and JMAP",
+});
+
+app.openapi(messageContentRoute, async (c) => {
+  const db = c.get("db") as DatabaseClient;
+  const auth = c.get("auth") as AuthContext | undefined;
+  if (!auth) {
+    return c.json({ success: false as const, error: "Unauthorized" }, 401);
+  }
+
+  const { id } = c.req.valid("param");
+  const messageRef = await db.getMessageMailboxReference(id);
+  if (!messageRef) {
+    return c.json({ success: false as const, error: "Message not found" }, 404);
+  }
+  if (!canAccessPoliticianId(auth, messageRef.politician_id)) {
+    return c.json({ success: false as const, error: "Forbidden" }, 403);
+  }
+  if (!messageRef.stalwart_message_id) {
+    return c.json(
+      { success: false as const, error: "Message has no mailbox reference" },
+      404,
+    );
+  }
+
+  try {
+    const runtimeSecrets =
+      c.env as unknown as Record<string, string | undefined>;
+    const baseConfig = resolveStalwartJmapWorkerConfig(runtimeSecrets);
+    if (!baseConfig) {
+      return c.json(
+        { success: false as const, error: "JMAP is not configured" },
+        500,
+      );
+    }
+
+    const relayToken = await getSupabaseRelayAccessToken(runtimeSecrets);
+    if (!relayToken) {
+      return c.json(
+        { success: false as const, error: "JMAP relay auth is not configured" },
+        500,
+      );
+    }
+
+    const accountId =
+      messageRef.stalwart_account_id?.trim() || baseConfig.jmapAccountId;
+    const client = new JMAPClient({
+      apiUrl: baseConfig.jmapApiUrl,
+      accountId,
+      bearerToken: relayToken,
+    });
+    const content = await client.getEmailContentById(
+      messageRef.stalwart_message_id,
+      accountId,
+    );
+    if (!content) {
+      return c.json(
+        { success: false as const, error: "Message not found in mailbox" },
+        404,
+      );
+    }
+
+    return c.json(
+      {
+        success: true as const,
+        message_id: id,
+        subject: content.subject,
+        received_at: content.receivedAt,
+        from: content.from,
+        to: content.to,
+        html_content: content.htmlBody
+          ? sanitizeEmailHtml(content.htmlBody)
+          : null,
+        text_content: content.textBody,
+      },
+      200,
+    );
+  } catch (_error) {
+    console.error("Message content fetch failed");
+    return c.json(
+      { success: false as const, error: "Failed to fetch message content" },
       500,
     );
   }

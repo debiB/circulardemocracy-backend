@@ -24,6 +24,16 @@ export interface JMAPSendResult {
   error?: string;
 }
 
+export interface JMAPEmailContent {
+  messageId: string;
+  subject: string;
+  receivedAt: string | null;
+  from: string[];
+  to: string[];
+  htmlBody: string | null;
+  textBody: string | null;
+}
+
 interface JmapSessionResponse {
   apiUrl: string;
   primaryAccounts?: Record<string, string>;
@@ -31,6 +41,19 @@ interface JmapSessionResponse {
 
 interface IdentityGetResponse {
   list?: Array<{ id: string; email?: string | null }>;
+}
+
+interface EmailGetResponse {
+  list?: Array<{
+    id?: string;
+    subject?: string;
+    receivedAt?: string;
+    from?: Array<{ email?: string; name?: string }>;
+    to?: Array<{ email?: string; name?: string }>;
+    bodyValues?: Record<string, { value?: string }>;
+    textBody?: Array<{ partId?: string }>;
+    htmlBody?: Array<{ partId?: string }>;
+  }>;
 }
 
 /**
@@ -345,6 +368,68 @@ export class JMAPClient {
     }
   }
 
+  async getEmailContentById(
+    messageId: string,
+    accountIdOverride?: string,
+  ): Promise<JMAPEmailContent | null> {
+    const messageIdTrimmed = messageId.trim();
+    if (!messageIdTrimmed) {
+      throw new Error("JMAP message id is required");
+    }
+
+    const accountId = (accountIdOverride || this.config.accountId).trim();
+    if (!accountId) {
+      throw new Error("JMAP account id is required");
+    }
+
+    const authHeader = this.authHeader();
+    const apiUrl = await this.resolvePostApiUrl();
+    const json = await this.jmapPost(apiUrl, authHeader, [
+      [
+        "Email/get",
+        {
+          accountId,
+          ids: [messageIdTrimmed],
+          properties: [
+            "id",
+            "subject",
+            "receivedAt",
+            "from",
+            "to",
+            "bodyValues",
+            "textBody",
+            "htmlBody",
+          ],
+        },
+        "emailGet",
+      ],
+    ]);
+
+    const responses = json.methodResponses;
+    if (!responses) {
+      throw new Error("Invalid JMAP response: missing methodResponses");
+    }
+    const body = this.getMethodResponse(
+      responses,
+      "Email/get",
+      "emailGet",
+    ) as EmailGetResponse;
+    const email = body.list?.[0];
+    if (!email?.id) {
+      return null;
+    }
+
+    return {
+      messageId: email.id,
+      subject: email.subject || "(no subject)",
+      receivedAt: email.receivedAt || null,
+      from: (email.from || []).map((entry) => this.formatAddress(entry)),
+      to: (email.to || []).map((entry) => this.formatAddress(entry)),
+      htmlBody: this.extractBodyValue(email, "htmlBody"),
+      textBody: this.extractBodyValue(email, "textBody"),
+    };
+  }
+
   /**
    * Builds a JMAP email object from our simplified EmailMessage format
    */
@@ -417,6 +502,37 @@ export class JMAPClient {
     }
 
     return emailObj;
+  }
+
+  private extractBodyValue(
+    email: {
+      bodyValues?: Record<string, { value?: string }>;
+      textBody?: Array<{ partId?: string }>;
+      htmlBody?: Array<{ partId?: string }>;
+    },
+    bodyType: "textBody" | "htmlBody",
+  ): string | null {
+    const bodyParts = email[bodyType] || [];
+    for (const part of bodyParts) {
+      const partId = part.partId;
+      if (!partId) {
+        continue;
+      }
+      const value = email.bodyValues?.[partId]?.value;
+      if (typeof value === "string" && value.length > 0) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  private formatAddress(entry: { email?: string; name?: string }): string {
+    const email = (entry.email || "").trim();
+    const name = (entry.name || "").trim();
+    if (!name) {
+      return email;
+    }
+    return `${name} <${email}>`;
   }
 
   /**

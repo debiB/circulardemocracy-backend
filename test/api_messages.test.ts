@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockSupabaseGetUser = vi.fn();
+const mockGetEmailContentById = vi.fn();
+const mockGetSupabaseRelayAccessToken = vi.fn();
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => ({
@@ -8,6 +10,18 @@ vi.mock("@supabase/supabase-js", () => ({
       getUser: mockSupabaseGetUser,
     },
   })),
+}));
+
+vi.mock("../src/jmap_client", () => ({
+  JMAPClient: vi.fn(function MockJMAPClient() {
+    return {
+      getEmailContentById: mockGetEmailContentById,
+    };
+  }),
+}));
+
+vi.mock("../src/supabase_relay_token", () => ({
+  getSupabaseRelayAccessToken: mockGetSupabaseRelayAccessToken,
 }));
 
 // Mock the embedding service to avoid ONNX runtime issues
@@ -32,6 +46,7 @@ const { mockDbInstance } = vi.hoisted(() => ({
     upsertSupporter: vi.fn(),
     storeMessageContact: vi.fn(),
     assignMessageToCluster: vi.fn(),
+    getMessageMailboxReference: vi.fn(),
   },
 }));
 
@@ -99,6 +114,7 @@ describe("Messages API Integration", () => {
     mockDbInstance.getUserPoliticianIds.mockResolvedValue([1]);
     mockDbInstance.upsertSupporter.mockResolvedValue(1);
     mockDbInstance.storeMessageContact.mockResolvedValue(undefined);
+    mockGetSupabaseRelayAccessToken.mockResolvedValue("relay-token");
     const apiModule = await import("../src/api");
     app = apiModule.default;
   });
@@ -230,5 +246,112 @@ describe("Messages API Integration", () => {
     const body = (await res.json()) as { status: string; message_id: number };
     expect(body.status).toBe("processed");
     expect(body.message_id).toBe(100);
+  });
+
+  it("should return 200 for mailbox content when message is in scope", async () => {
+    mockDbInstance.getMessageMailboxReference.mockResolvedValue({
+      id: 100,
+      politician_id: 1,
+      stalwart_message_id: "msg-jmap-100",
+      stalwart_account_id: "politician@example.com",
+    });
+    mockGetEmailContentById.mockResolvedValue({
+      messageId: "msg-jmap-100",
+      subject: "Inbox Subject",
+      receivedAt: "2026-04-28T12:00:00.000Z",
+      from: ["Citizen <citizen@example.com>"],
+      to: ["Politician <politician@example.com>"],
+      htmlBody: '<p>Hello</p><script>alert("x")</script>',
+      textBody: "Hello",
+    });
+
+    const req = new Request("http://localhost/api/v1/messages/100/content", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-jwt",
+      },
+    });
+    const res = await app.fetch(req, {
+      ...env,
+      STALWART_JMAP_ENDPOINT: "https://mail.example.com/.well-known/jmap",
+      STALWART_JMAP_ACCOUNT_ID: "relay-account",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success: boolean;
+      html_content: string | null;
+      subject: string;
+    };
+    expect(body.success).toBe(true);
+    expect(body.subject).toBe("Inbox Subject");
+    expect(body.html_content).toContain("<p>Hello</p>");
+    expect(body.html_content).not.toContain("<script>");
+  });
+
+  it("should return 403 for mailbox content when message is outside scope", async () => {
+    mockDbInstance.getMessageMailboxReference.mockResolvedValue({
+      id: 101,
+      politician_id: 99,
+      stalwart_message_id: "msg-jmap-101",
+      stalwart_account_id: "other@example.com",
+    });
+
+    const req = new Request("http://localhost/api/v1/messages/101/content", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-jwt",
+      },
+    });
+    const res = await app.fetch(req, {
+      ...env,
+      STALWART_JMAP_ENDPOINT: "https://mail.example.com/.well-known/jmap",
+      STALWART_JMAP_ACCOUNT_ID: "relay-account",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("should return 404 for mailbox content when DB mailbox reference is missing", async () => {
+    mockDbInstance.getMessageMailboxReference.mockResolvedValue({
+      id: 102,
+      politician_id: 1,
+      stalwart_message_id: null,
+      stalwart_account_id: "politician@example.com",
+    });
+
+    const req = new Request("http://localhost/api/v1/messages/102/content", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-jwt",
+      },
+    });
+    const res = await app.fetch(req, {
+      ...env,
+      STALWART_JMAP_ENDPOINT: "https://mail.example.com/.well-known/jmap",
+      STALWART_JMAP_ACCOUNT_ID: "relay-account",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("should return 404 for mailbox content when JMAP message is not found", async () => {
+    mockDbInstance.getMessageMailboxReference.mockResolvedValue({
+      id: 103,
+      politician_id: 1,
+      stalwart_message_id: "missing-jmap-id",
+      stalwart_account_id: "politician@example.com",
+    });
+    mockGetEmailContentById.mockResolvedValue(null);
+
+    const req = new Request("http://localhost/api/v1/messages/103/content", {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer valid-jwt",
+      },
+    });
+    const res = await app.fetch(req, {
+      ...env,
+      STALWART_JMAP_ENDPOINT: "https://mail.example.com/.well-known/jmap",
+      STALWART_JMAP_ACCOUNT_ID: "relay-account",
+    });
+    expect(res.status).toBe(404);
   });
 });

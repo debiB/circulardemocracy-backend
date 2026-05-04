@@ -858,6 +858,32 @@ export class DatabaseClient {
     }
   }
 
+  async getMessageMailboxReference(messageId: number): Promise<{
+    id: number;
+    politician_id: number;
+    stalwart_message_id: string | null;
+    stalwart_account_id: string | null;
+  } | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from("messages")
+        .select("id,politician_id,stalwart_message_id,stalwart_account_id")
+        .eq("id", messageId)
+        .limit(1);
+
+      if (error) {
+        throw error;
+      }
+      if (!data || data.length === 0) {
+        return null;
+      }
+      return data[0];
+    } catch (_error) {
+      console.error("Error getting message mailbox reference");
+      return null;
+    }
+  }
+
   // =============================================================================
   // REPLY TEMPLATE OPERATIONS
   // =============================================================================
