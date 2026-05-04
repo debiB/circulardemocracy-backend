@@ -4,17 +4,46 @@
 import type { DatabaseClient } from "./database";
 import { resolveOutboundEmailIdentity } from "./email_impersonation";
 import { renderEmailLayout } from "./email_layout";
-import { type EmailMessage, JMAPClient } from "./jmap_client";
 import {
-  resolveStalwartJmapWorkerConfig,
-  type MailSendBindings,
-} from "./stalwart_jmap_env";
+  type EmailMessage,
+  jmapWellKnownSessionUrl,
+  JMAPClient,
+} from "./jmap_client";
 import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
 
 export interface WorkerConfig {
   jmapApiUrl: string;
   jmapAccountId: string;
   jmapBearerToken: string;
+}
+
+/** Worker / runtime bindings used for outbound JMAP + Supabase relay auth. */
+export type MailSendBindings = {
+  JMAP_URL?: string;
+  STALWART_JMAP_ACCOUNT_ID?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_ANON_KEY?: string;
+  /** Supabase user (email) used for password-grant relay tokens to call JMAP as the service identity. */
+  RELAY_SERVICE_ACCOUNT_EMAIL?: string;
+  RELAY_SERVICE_ACCOUNT_PASSWORD?: string;
+};
+
+function resolveStalwartJmapWorkerConfig(
+  env: MailSendBindings,
+): WorkerConfig | null {
+  const jmapApiUrl =
+    jmapWellKnownSessionUrl(
+      env as Record<string, string | undefined | null>,
+    )?.trim() ?? "";
+  const jmapAccountId = (env.STALWART_JMAP_ACCOUNT_ID?.trim() || "").trim();
+  if (!jmapApiUrl || !jmapAccountId) {
+    return null;
+  }
+  return {
+    jmapApiUrl,
+    jmapAccountId,
+    jmapBearerToken: "",
+  };
 }
 
 type RuntimeSecretBindings = Record<string, string | undefined>;
@@ -422,7 +451,7 @@ async function resolveSingleServiceAccountConfig(
     return {
       ok: false,
       reason:
-        "Single JMAP relay service account is not configured. Set STALWART_JMAP_ENDPOINT and STALWART_JMAP_ACCOUNT_ID.",
+        "Single JMAP relay service account is not configured. Set JMAP_URL (base mail server URL) and STALWART_JMAP_ACCOUNT_ID.",
     };
   }
 
@@ -433,7 +462,7 @@ async function resolveSingleServiceAccountConfig(
     return {
       ok: false,
       reason:
-        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, STALWART_SUPABASE_RELAY_EMAIL, and STALWART_SUPABASE_RELAY_PASSWORD.",
+        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, RELAY_SERVICE_ACCOUNT_EMAIL, and RELAY_SERVICE_ACCOUNT_PASSWORD.",
     };
   }
   const config: WorkerConfig = {

@@ -6,6 +6,7 @@ import { z } from "zod";
 import Turndown from "turndown";
 import { config as dotenv } from "dotenv";
 import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+import { jmapWellKnownSessionUrl } from "../src/jmap_client.js";
 
 dotenv();
 
@@ -95,8 +96,6 @@ interface JmapEmail {
   bodyValues?: Record<string, JmapBodyValue>;
 }
 
-const STALWART_JMAP_ENDPOINT =
-  "https://mail.circulardemocracy.org/.well-known/jmap";
 const turndownService = new Turndown({
   headingStyle: "atx",
   bulletListMarker: "-",
@@ -170,8 +169,8 @@ USAGE:
   jmap-fetch [--user <username>] [--password <password>] [options]
 
 OPTIONS:
-  --user <username>      JMAP username (default: STALWART_USERNAME env)
-  --password <password>  JMAP app password (default: STALWART_APP_PASSWORD env)
+  --user <username>      JMAP mailbox email (default: JMAP_SERVICE_ACCOUNT_EMAIL env)
+  --password <password>  JMAP app password (default: JMAP_SERVICE_ACCOUNT_PASSWORD env)
   --process-all          Fetch all available messages (default when no filter provided)
   --since <date>         Fetch messages received after date (ISO 8601)
   --message-id <id>      Fetch one specific message (JMAP ID or Message-ID header)
@@ -179,9 +178,9 @@ OPTIONS:
   -h, --help             Show this help message
 
 ENVIRONMENT VARIABLES:
-  STALWART_APP_PASSWORD  Required app password for JMAP auth
-  STALWART_USERNAME      Required unless passed with --user
-  STALWART_JMAP_ENDPOINT Optional, default: "${STALWART_JMAP_ENDPOINT}"
+  JMAP_SERVICE_ACCOUNT_EMAIL      Required unless passed with --user
+  JMAP_SERVICE_ACCOUNT_PASSWORD  Required app password for JMAP basic auth
+  JMAP_URL               Required. Mail server base URL (no path); session URL is JMAP_URL + "/.well-known/jmap"
   STALWART_JMAP_ACCOUNT_ID Optional; if unset, taken from session primaryAccounts (mail)
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
@@ -860,13 +859,12 @@ async function runStalwartIngestion(
   options: StalwartFetchOptions,
   username: string,
   password: string,
+  jmapWellKnownUrl: string,
 ): Promise<boolean> {
-  const endpoint = process.env.STALWART_JMAP_ENDPOINT || STALWART_JMAP_ENDPOINT;
-
   const authHeader = encodeBasicAuth(username, password);
 
-  console.log(`Connecting to Stalwart JMAP at ${endpoint}...`);
-  const session = await fetchJmapSession(endpoint, authHeader);
+  console.log(`Connecting to Stalwart JMAP at ${jmapWellKnownUrl}...`);
+  const session = await fetchJmapSession(jmapWellKnownUrl, authHeader);
   const accountId =
     process.env.STALWART_JMAP_ACCOUNT_ID?.trim() || resolveAccountId(session);
   const mailboxCache = new Map<string, string>();
@@ -1012,17 +1010,30 @@ async function main() {
     }
   }
 
-  const username = parsed.user || process.env.STALWART_USERNAME;
-  const password = parsed.password || process.env.STALWART_APP_PASSWORD || process.env.STALWART_PASSWORD;
+  const username = parsed.user || process.env.JMAP_SERVICE_ACCOUNT_EMAIL;
+  const password =
+    parsed.password || process.env.JMAP_SERVICE_ACCOUNT_PASSWORD;
 
   if (!username) {
-    console.error("Error: STALWART_USERNAME environment variable or --user must be set");
+    console.error(
+      "Error: JMAP_SERVICE_ACCOUNT_EMAIL environment variable or --user must be set",
+    );
     process.exit(1);
   }
 
   if (!password) {
-    console.error("Error: STALWART_APP_PASSWORD environment variable or --password must be set");
+    console.error(
+      "Error: JMAP_SERVICE_ACCOUNT_PASSWORD environment variable or --password must be set",
+    );
     console.error("Create an app password in Stalwart and export it before running CLI.");
+    process.exit(1);
+  }
+
+  const jmapWellKnown = jmapWellKnownSessionUrl(process.env);
+  if (!jmapWellKnown) {
+    console.error(
+      "Error: Set JMAP_URL to your mail server base URL (e.g. https://mail.example.org).",
+    );
     process.exit(1);
   }
 
@@ -1042,7 +1053,14 @@ async function main() {
     const ai: Ai = new CliAi();
 
     const fetchOptions = parseStalwartArgs(args);
-    const success = await runStalwartIngestion(db, ai, fetchOptions, username, password);
+    const success = await runStalwartIngestion(
+      db,
+      ai,
+      fetchOptions,
+      username,
+      password,
+      jmapWellKnown,
+    );
     process.exit(success ? 0 : 1);
 
   } catch (error) {

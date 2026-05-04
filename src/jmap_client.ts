@@ -1,6 +1,19 @@
 // JMAP Client for sending emails via Stalwart mail server
 // JMAP (JSON Meta Application Protocol) is a modern email protocol
 
+/**
+ * JMAP session document URL from `JMAP_URL` (trimmed, no trailing slash) + `/.well-known/jmap`.
+ */
+export function jmapWellKnownSessionUrl(
+  env: Record<string, string | undefined | null>,
+): string | null {
+  const base = String(env.JMAP_URL ?? "").trim().replace(/\/+$/, "");
+  if (!base) {
+    return null;
+  }
+  return `${base}/.well-known/jmap`;
+}
+
 export interface JMAPConfig {
   apiUrl: string;
   accountId: string;
