@@ -393,7 +393,7 @@ ENVIRONMENT VARIABLES:
   JMAP_SERVICE_ACCOUNT_EMAIL      Optional JMAP mailbox email (or pass --user)
   JMAP_SERVICE_ACCOUNT_PASSWORD  Required JMAP app password for fetching message content
   JMAP_URL               Mail server base URL; session URL is JMAP_URL + "/.well-known/jmap"
-  STALWART_JMAP_ACCOUNT_ID Optional; if unset, taken from session primaryAccounts (mail)
+  (Mail account id comes from the JMAP session after login, not from STALWART_JMAP_ACCOUNT_ID.)
 
 EXAMPLES:
   reprocess-messages --process-all
@@ -508,9 +508,7 @@ async function reprocessMessages(
 
     console.log(`Connecting to Stalwart JMAP at ${endpoint}...`);
     jmapSession = await fetchJmapSession(endpoint, jmapAuthHeader);
-    jmapAccountId =
-      process.env.STALWART_JMAP_ACCOUNT_ID?.trim() ||
-      resolveAccountId(jmapSession);
+    jmapAccountId = resolveAccountId(jmapSession);
     console.log("Connected to Stalwart\n");
   }
 

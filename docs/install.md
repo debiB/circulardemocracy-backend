@@ -53,7 +53,7 @@ npm run db:push
 Outbound replies use one global service account for authentication:
 
 - `JMAP_URL` (base mail server; the worker uses `JMAP_URL/.well-known/jmap` for the JMAP session document)
-- `STALWART_JMAP_ACCOUNT_ID`
+- `STALWART_JMAP_ACCOUNT_ID` (API / reply worker; not read by `jmap-fetch` / `reprocess-messages`, which use the JMAP session)
 - `SUPABASE_ANON_KEY`
 - `RELAY_SERVICE_ACCOUNT_EMAIL`
 - `RELAY_SERVICE_ACCOUNT_PASSWORD`

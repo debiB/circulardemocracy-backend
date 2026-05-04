@@ -181,7 +181,7 @@ ENVIRONMENT VARIABLES:
   JMAP_SERVICE_ACCOUNT_EMAIL      Required unless passed with --user
   JMAP_SERVICE_ACCOUNT_PASSWORD  Required app password for JMAP basic auth
   JMAP_URL               Required. Mail server base URL (no path); session URL is JMAP_URL + "/.well-known/jmap"
-  STALWART_JMAP_ACCOUNT_ID Optional; if unset, taken from session primaryAccounts (mail)
+  (Mail account id for this CLI comes from the JMAP session after login, not from STALWART_JMAP_ACCOUNT_ID.)
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
 
@@ -868,8 +868,7 @@ async function runStalwartIngestion(
 
   console.log(`Connecting to Stalwart JMAP at ${jmapWellKnownUrl}...`);
   const session = await fetchJmapSession(jmapWellKnownUrl, authHeader);
-  const accountId =
-    process.env.STALWART_JMAP_ACCOUNT_ID?.trim() || resolveAccountId(session);
+  const accountId = resolveAccountId(session);
   const mailboxCache = new Map<string, string>();
 
   let rawEmails: JmapEmail[] = [];
