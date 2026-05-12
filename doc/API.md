@@ -12,13 +12,11 @@ API for processing citizen messages to politicians
 
 **Summary:** /api/v1/messages/analytics
 
-Retrieve message analytics with counts grouped by calendar week and campaign for all data visible to the authenticated user (RLS-scoped).
-
-**Parameters:** none
+Retrieve message analytics with counts grouped by calendar week and campaign for all time visible to the caller (RLS-scoped)
 
 **Responses:**
 
-- **200**: Message analytics grouped by calendar week and campaign
+- **200**: Message analytics grouped by calendar week and campaign since first data (week buckets from Postgres date_trunc)
 - **500**: Internal server error
 
 **CLI Example:**

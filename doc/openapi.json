@@ -40,7 +40,7 @@
         "description": "Retrieve message analytics with counts grouped by calendar week and campaign for all time visible to the caller (RLS-scoped)",
         "responses": {
           "200": {
-            "description": "Message analytics grouped by calendar week and campaign",
+            "description": "Message analytics grouped by calendar week and campaign since first data (week buckets from Postgres date_trunc)",
             "content": {
               "application/json": {
                 "schema": {
