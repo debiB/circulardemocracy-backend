@@ -12,23 +12,19 @@ API for processing citizen messages to politicians
 
 **Summary:** /api/v1/messages/analytics
 
-Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)
+Retrieve message analytics with counts grouped by calendar week and campaign for all data visible to the authenticated user (RLS-scoped).
 
-**Parameters:**
-
-| Name | Type | In | Required | Description |
-|------|------|----|---------|--------------|
-| days | string | query |  | Number of days to look back (default: 7) |
+**Parameters:** none
 
 **Responses:**
 
-- **200**: Message analytics grouped by day and campaign
+- **200**: Message analytics grouped by calendar week and campaign
 - **500**: Internal server error
 
 **CLI Example:**
 
 ```bash
-./cli /api/v1/messages/analytics --days=example
+./cli /api/v1/messages/analytics
 ```
 
 ---

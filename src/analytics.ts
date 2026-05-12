@@ -51,16 +51,6 @@ const getMessageAnalyticsRoute = createRoute({
   method: "get",
   path: "/api/v1/messages/analytics",
   security: [{ Bearer: [] }],
-  request: {
-    query: z.object({
-      days: z
-        .string()
-        .regex(/^\d+$/)
-        .optional()
-        .default("7")
-        .describe("Number of days to look back (default: 7)"),
-    }),
-  },
   responses: {
     200: {
       content: {
@@ -68,7 +58,8 @@ const getMessageAnalyticsRoute = createRoute({
           schema: MessageAnalyticsResponseSchema,
         },
       },
-      description: "Message analytics grouped by day and campaign",
+      description:
+        "Message analytics grouped by calendar week and campaign since first data (week buckets from Postgres date_trunc)",
     },
     500: {
       content: {
@@ -82,18 +73,14 @@ const getMessageAnalyticsRoute = createRoute({
   tags: ["Analytics"],
   summary: "/api/v1/messages/analytics",
   description:
-    "Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)",
+    "Retrieve message analytics with counts grouped by calendar week and campaign for all time visible to the caller (RLS-scoped)",
 });
 
 app.openapi(getMessageAnalyticsRoute, async (c) => {
   try {
-    const { days } = c.req.valid("query");
-    const daysBack = parseInt(days, 10);
     const authHeader = c.req.header("Authorization");
     const supabaseUrl = process.env.SUPABASE_URL || c.env.SUPABASE_URL;
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || c.env.SUPABASE_KEY;
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - daysBack);
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
@@ -105,9 +92,8 @@ app.openapi(getMessageAnalyticsRoute, async (c) => {
     });
 
     const { data: analytics, error } = await supabase
-      .from("message_analytics_view")
+      .from("message_analytics_weekly_view")
       .select("date, campaign_id, campaign_name, message_count")
-      .gte("date", fromDate.toISOString())
       .order("date", { ascending: true });
 
     if (error) {

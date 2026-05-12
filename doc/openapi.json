@@ -37,24 +37,10 @@
           "Analytics"
         ],
         "summary": "/api/v1/messages/analytics",
-        "description": "Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d+$",
-              "default": "7",
-              "description": "Number of days to look back (default: 7)"
-            },
-            "required": false,
-            "description": "Number of days to look back (default: 7)",
-            "name": "days",
-            "in": "query"
-          }
-        ],
+        "description": "Retrieve message analytics with counts grouped by calendar week and campaign for all time visible to the caller (RLS-scoped)",
         "responses": {
           "200": {
-            "description": "Message analytics grouped by day and campaign",
+            "description": "Message analytics grouped by calendar week and campaign",
             "content": {
               "application/json": {
                 "schema": {
