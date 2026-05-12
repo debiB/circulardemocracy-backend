@@ -2,6 +2,11 @@
 
 import { DatabaseClient } from "../src/database.js";
 import { processMessage, PoliticianNotFoundError, type Ai, type MessageInput } from "../src/message_processor.js";
+import {
+  buildStalwartImpersonationLogin,
+  encodeBasicAuth,
+} from "../src/stalwart_jmap_auth.js";
+import { normalizeMailDomain } from "../src/stalwart_jmap_env.js";
 import { z } from "zod";
 import Turndown from "turndown";
 import { config as dotenv } from "dotenv";
@@ -183,6 +188,9 @@ ENVIRONMENT VARIABLES:
   STALWART_USERNAME      Required unless passed with --user
   STALWART_JMAP_ENDPOINT Optional, default: "${STALWART_JMAP_ENDPOINT}"
   STALWART_JMAP_ACCOUNT_ID Optional; if unset, taken from session primaryAccounts (mail)
+  ALL_DOMAIN             When set (e.g. circulardemocracy.org), ingest each mailbox on that
+                         domain using Stalwart impersonation (STALWART_USERNAME must be the
+                         service account; password is the service account app password).
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
 
@@ -315,10 +323,6 @@ function convertJmapEmailToMessageInput(email: JmapEmail): MessageInput {
   };
 
   return MessageInputSchema.parse(messageInput);
-}
-
-function encodeBasicAuth(username: string, password: string): string {
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
 async function fetchJmapSession(
@@ -858,17 +862,17 @@ async function runStalwartIngestion(
   db: DatabaseClient,
   ai: Ai,
   options: StalwartFetchOptions,
-  username: string,
-  password: string,
+  authHeader: string,
+  mailboxLabel?: string,
 ): Promise<boolean> {
   const endpoint = process.env.STALWART_JMAP_ENDPOINT || STALWART_JMAP_ENDPOINT;
 
-  const authHeader = encodeBasicAuth(username, password);
-
-  console.log(`Connecting to Stalwart JMAP at ${endpoint}...`);
+  const prefix = mailboxLabel ? `[${mailboxLabel}] ` : "";
+  console.log(`${prefix}Connecting to Stalwart JMAP at ${endpoint}...`);
   const session = await fetchJmapSession(endpoint, authHeader);
-  const accountId =
-    process.env.STALWART_JMAP_ACCOUNT_ID?.trim() || resolveAccountId(session);
+  const accountId = mailboxLabel
+    ? resolveAccountId(session)
+    : process.env.STALWART_JMAP_ACCOUNT_ID?.trim() || resolveAccountId(session);
   const mailboxCache = new Map<string, string>();
 
   let rawEmails: JmapEmail[] = [];
@@ -922,7 +926,7 @@ async function runStalwartIngestion(
   }
 
   console.log(
-    `Fetched ${rawEmails.length} message(s); ${unprocessedRawEmails.length} unprocessed, ${validMessages.length} valid, ${skippedCount} skipped`,
+    `${prefix}Fetched ${rawEmails.length} message(s); ${unprocessedRawEmails.length} unprocessed, ${validMessages.length} valid, ${skippedCount} skipped`,
   );
 
   if (options.dryRun) {
@@ -931,7 +935,7 @@ async function runStalwartIngestion(
   }
 
   if (validMessages.length === 0) {
-    console.log("No valid messages to process.");
+    console.log(`${prefix}No valid messages to process.`);
     return true;
   }
 
@@ -984,12 +988,12 @@ async function runStalwartIngestion(
     }
   }
 
-  console.log("\n=== Stalwart Ingestion Summary ===");
-  console.log(`Processed: ${summary.processed}`);
-  console.log(`Duplicates: ${summary.duplicates}`);
-  console.log(`Politician not found: ${summary.politicianNotFound}`);
-  console.log(`Failed: ${summary.failed}`);
-  console.log(`Moved to folders: ${summary.moved}`);
+  console.log(`\n${prefix}=== Stalwart Ingestion Summary ===`);
+  console.log(`${prefix}Processed: ${summary.processed}`);
+  console.log(`${prefix}Duplicates: ${summary.duplicates}`);
+  console.log(`${prefix}Politician not found: ${summary.politicianNotFound}`);
+  console.log(`${prefix}Failed: ${summary.failed}`);
+  console.log(`${prefix}Moved to folders: ${summary.moved}`);
 
   return summary.failed === 0;
 }
@@ -1014,6 +1018,7 @@ async function main() {
 
   const username = parsed.user || process.env.STALWART_USERNAME;
   const password = parsed.password || process.env.STALWART_APP_PASSWORD || process.env.STALWART_PASSWORD;
+  const allDomainRaw = (process.env.ALL_DOMAIN || "").trim();
 
   if (!username) {
     console.error("Error: STALWART_USERNAME environment variable or --user must be set");
@@ -1042,7 +1047,33 @@ async function main() {
     const ai: Ai = new CliAi();
 
     const fetchOptions = parseStalwartArgs(args);
-    const success = await runStalwartIngestion(db, ai, fetchOptions, username, password);
+
+    if (allDomainRaw) {
+      const domainKey = normalizeMailDomain(allDomainRaw);
+      const mailboxes = await db.listStalwartMailboxAddressesForDomain(domainKey);
+      if (mailboxes.length === 0) {
+        console.error(
+          `Error: ALL_DOMAIN is set (${domainKey}) but no politician or campaign technical addresses match that domain in the database.`,
+        );
+        process.exit(1);
+      }
+      console.log(
+        `ALL_DOMAIN mode: ingesting ${mailboxes.length} mailbox(es) on @${domainKey} using Stalwart impersonation.`,
+      );
+      let allOk = true;
+      for (const mailbox of mailboxes) {
+        const principal = buildStalwartImpersonationLogin(username, mailbox);
+        const authHeader = encodeBasicAuth(principal, password);
+        const ok = await runStalwartIngestion(db, ai, fetchOptions, authHeader, mailbox);
+        if (!ok) {
+          allOk = false;
+        }
+      }
+      process.exit(allOk ? 0 : 1);
+    }
+
+    const authHeader = encodeBasicAuth(username, password);
+    const success = await runStalwartIngestion(db, ai, fetchOptions, authHeader);
     process.exit(success ? 0 : 1);
 
   } catch (error) {

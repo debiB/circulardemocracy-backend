@@ -25,6 +25,9 @@ serve(
           process.env.STALWART_SUPABASE_RELAY_EMAIL || "",
         STALWART_SUPABASE_RELAY_PASSWORD:
           process.env.STALWART_SUPABASE_RELAY_PASSWORD || "",
+        ALL_DOMAIN: process.env.ALL_DOMAIN || "",
+        STALWART_USERNAME: process.env.STALWART_USERNAME || "",
+        STALWART_APP_PASSWORD: process.env.STALWART_APP_PASSWORD || "",
       });
     },
     port: 3000,

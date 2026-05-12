@@ -224,6 +224,66 @@ export class DatabaseClient {
     }
   }
 
+  /**
+   * Mailbox addresses on {@link domain} used for multi-mailbox Stalwart ingestion
+   * (active politicians + campaign technical addresses).
+   */
+  async listStalwartMailboxAddressesForDomain(domain: string): Promise<string[]> {
+    const d = domain.trim().toLowerCase().replace(/^@/, "");
+    if (!d) {
+      return [];
+    }
+    const suffix = `@${d}`;
+    const byLower = new Map<string, string>();
+
+    const add = (raw: string) => {
+      const t = raw.trim();
+      if (!t) {
+        return;
+      }
+      const lower = t.toLowerCase();
+      if (!lower.endsWith(suffix)) {
+        return;
+      }
+      if (!byLower.has(lower)) {
+        byLower.set(lower, t);
+      }
+    };
+
+    const { data: polRows, error: polErr } = await this.supabase
+      .from("politicians")
+      .select("email, additional_emails")
+      .eq("active", true);
+
+    if (polErr) {
+      throw polErr;
+    }
+
+    for (const row of polRows || []) {
+      add(row.email as string);
+      for (const extra of (row.additional_emails || []) as string[]) {
+        add(extra);
+      }
+    }
+
+    const { data: campRows, error: campErr } = await this.supabase
+      .from("campaigns")
+      .select("technical_email")
+      .in("status", ["active", "unconfirmed"]);
+
+    if (campErr) {
+      throw campErr;
+    }
+
+    for (const row of campRows || []) {
+      add((row.technical_email as string) || "");
+    }
+
+    return Array.from(byLower.values()).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
+  }
+
   // =============================================================================
   // CAMPAIGN OPERATIONS
   // =============================================================================

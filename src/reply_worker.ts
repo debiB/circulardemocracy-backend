@@ -5,17 +5,14 @@ import type { DatabaseClient } from "./database";
 import { resolveOutboundEmailIdentity } from "./email_impersonation";
 import { renderEmailLayout } from "./email_layout";
 import { type EmailMessage, JMAPClient } from "./jmap_client";
+import { buildStalwartImpersonationLogin } from "./stalwart_jmap_auth";
 import {
+  emailHostedOnDomain,
   resolveStalwartJmapWorkerConfig,
   type MailSendBindings,
+  type WorkerConfig,
 } from "./stalwart_jmap_env";
 import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
-
-export interface WorkerConfig {
-  jmapApiUrl: string;
-  jmapAccountId: string;
-  jmapBearerToken: string;
-}
 
 type RuntimeSecretBindings = Record<string, string | undefined>;
 const FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS = [
@@ -212,12 +209,6 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const jmapClient = new JMAPClient({
-    apiUrl: jmapConfig.jmapApiUrl,
-    accountId: jmapConfig.jmapAccountId,
-    bearerToken: jmapConfig.jmapBearerToken,
-  });
-
   // 3. Resolve recipient email from short-term contact storage
   const senderEmail = await db.getMessageContactEmail(message.id);
   if (!senderEmail) {
@@ -250,6 +241,31 @@ async function processSingleMessage(
     await handleSendFailure(db, message, errorMsg);
     throw new Error(errorMsg);
   }
+
+  const imp = jmapConfig.stalwartImpersonation;
+  if (imp) {
+    if (!emailHostedOnDomain(outboundIdentity.fromEmail, imp.allDomainLower)) {
+      const errorMsg = `ALL_DOMAIN is ${imp.allDomainLower} but outbound From is not on that domain`;
+      await handleSendFailure(db, message, errorMsg);
+      throw new Error(errorMsg);
+    }
+  }
+
+  const jmapClient = imp
+    ? new JMAPClient({
+        apiUrl: jmapConfig.jmapApiUrl,
+        accountId: "",
+        basicUsername: buildStalwartImpersonationLogin(
+          imp.serviceUsername,
+          outboundIdentity.fromEmail,
+        ),
+        basicPassword: imp.servicePassword,
+      })
+    : new JMAPClient({
+        apiUrl: jmapConfig.jmapApiUrl,
+        accountId: jmapConfig.jmapAccountId,
+        bearerToken: jmapConfig.jmapBearerToken,
+      });
 
   const sendContext = await buildSendContext(
     db,
@@ -419,10 +435,21 @@ async function resolveSingleServiceAccountConfig(
   );
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
+    const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
+      ? " For ALL_DOMAIN mode, set STALWART_JMAP_ENDPOINT plus STALWART_USERNAME and STALWART_APP_PASSWORD (service account)."
+      : "";
     return {
       ok: false,
       reason:
-        "Single JMAP relay service account is not configured. Set STALWART_JMAP_ENDPOINT and STALWART_JMAP_ACCOUNT_ID.",
+        "Stalwart JMAP outbound is not configured. Without ALL_DOMAIN: set STALWART_JMAP_ENDPOINT, STALWART_JMAP_ACCOUNT_ID, and Supabase relay credentials (SUPABASE_URL, SUPABASE_ANON_KEY, STALWART_SUPABASE_RELAY_EMAIL, STALWART_SUPABASE_RELAY_PASSWORD)." +
+        allDomainHint,
+    };
+  }
+
+  if (baseConfig.stalwartImpersonation) {
+    return {
+      ok: true,
+      config: baseConfig,
     };
   }
 
