@@ -37,10 +37,39 @@
           "Analytics"
         ],
         "summary": "/api/v1/messages/analytics",
-        "description": "Retrieve message analytics with counts grouped by calendar week and campaign for all time visible to the caller (RLS-scoped)",
+        "description": "Retrieve message analytics grouped by day (last 7 days by default) or by calendar week",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$",
+              "default": "7",
+              "description": "Number of days to look back for daily analytics (default: 7)"
+            },
+            "required": false,
+            "description": "Number of days to look back for daily analytics (default: 7)",
+            "name": "days",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week"
+              ],
+              "default": "day",
+              "description": "Aggregation bucket: day (default) or week"
+            },
+            "required": false,
+            "description": "Aggregation bucket: day (default) or week",
+            "name": "bucket",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Message analytics grouped by calendar week and campaign since first data (week buckets from Postgres date_trunc)",
+            "description": "Message analytics grouped by day or week and campaign",
             "content": {
               "application/json": {
                 "schema": {
