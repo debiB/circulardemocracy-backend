@@ -51,6 +51,23 @@ const getMessageAnalyticsRoute = createRoute({
   method: "get",
   path: "/api/v1/messages/analytics",
   security: [{ Bearer: [] }],
+  request: {
+    query: z.object({
+      days: z
+        .string()
+        .regex(/^\d+$/)
+        .optional()
+        .default("7")
+        .describe(
+          "Number of days to look back for daily analytics (default: 7)",
+        ),
+      bucket: z
+        .enum(["day", "week"])
+        .optional()
+        .default("day")
+        .describe("Aggregation bucket: day (default) or week"),
+    }),
+  },
   responses: {
     200: {
       content: {
@@ -58,8 +75,7 @@ const getMessageAnalyticsRoute = createRoute({
           schema: MessageAnalyticsResponseSchema,
         },
       },
-      description:
-        "Message analytics grouped by calendar week and campaign since first data (week buckets from Postgres date_trunc)",
+      description: "Message analytics grouped by day or week and campaign",
     },
     500: {
       content: {
@@ -73,14 +89,18 @@ const getMessageAnalyticsRoute = createRoute({
   tags: ["Analytics"],
   summary: "/api/v1/messages/analytics",
   description:
-    "Retrieve message analytics with counts grouped by calendar week and campaign for all time visible to the caller (RLS-scoped)",
+    "Retrieve message analytics grouped by day (last 7 days by default) or by calendar week",
 });
 
 app.openapi(getMessageAnalyticsRoute, async (c) => {
   try {
+    const { days, bucket } = c.req.valid("query");
+    const daysBack = parseInt(days, 10);
     const authHeader = c.req.header("Authorization");
     const supabaseUrl = process.env.SUPABASE_URL || c.env.SUPABASE_URL;
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || c.env.SUPABASE_KEY;
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - daysBack);
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
@@ -91,10 +111,21 @@ app.openapi(getMessageAnalyticsRoute, async (c) => {
       },
     });
 
-    const { data: analytics, error } = await supabase
-      .from("message_analytics_weekly_view")
-      .select("date, campaign_id, campaign_name, message_count")
-      .order("date", { ascending: true });
+    const sourceView =
+      bucket === "week"
+        ? "message_analytics_weekly_view"
+        : "message_analytics_view";
+    let query = supabase
+      .from(sourceView)
+      .select("date, campaign_id, campaign_name, message_count");
+
+    if (bucket === "day") {
+      query = query.gte("date", fromDate.toISOString());
+    }
+
+    const { data: analytics, error } = await query.order("date", {
+      ascending: true,
+    });
 
     if (error) {
       throw error;
