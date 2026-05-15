@@ -11,7 +11,6 @@ vi.mock("../src/embedding_service.ts", () => ({
 const { mockDbInstance } = vi.hoisted(() => ({
   mockDbInstance: {
     request: vi.fn(),
-    getMessageAnalyticsDaily: vi.fn(),
     getUserPoliticianIds: vi.fn(),
   },
 }));
@@ -36,7 +35,10 @@ const mockAnalyticsQueryResult = {
 
 mockAnalyticsOrder.mockImplementation(async () => mockAnalyticsQueryResult);
 mockAnalyticsGte.mockImplementation(() => ({ order: mockAnalyticsOrder }));
-mockAnalyticsSelect.mockImplementation(() => ({ gte: mockAnalyticsGte }));
+mockAnalyticsSelect.mockImplementation(() => ({
+  gte: mockAnalyticsGte,
+  order: mockAnalyticsOrder,
+}));
 mockAnalyticsFrom.mockImplementation(() => ({ select: mockAnalyticsSelect }));
 
 const mockSupabaseClient = {
@@ -111,7 +113,7 @@ describe("Analytics API Integration", () => {
     expect(res.status).toBe(401);
   });
 
-  it("should return 200 with analytics data using default days parameter", async () => {
+  it("should return 200 with daily analytics data by default (7 days)", async () => {
     // Mock successful auth
     mockGetUser.mockResolvedValue({
       data: { user: { id: "user-123", email: "test@example.com" } },
@@ -149,30 +151,29 @@ describe("Analytics API Integration", () => {
     const body = (await res.json()) as { analytics: typeof mockDailyAnalytics };
     expect(body.analytics).toEqual(mockDailyAnalytics);
     expect(mockAnalyticsFrom).toHaveBeenCalledWith("message_analytics_view");
+    expect(mockAnalyticsGte).toHaveBeenCalledOnce();
   });
 
-  it("should return 200 with analytics data using custom days parameter", async () => {
-    // Mock successful auth
+  it("should return 200 with weekly analytics data when bucket=week", async () => {
     mockGetUser.mockResolvedValue({
       data: { user: { id: "user-123", email: "test@example.com" } },
       error: null,
     });
 
-    // Mock daily aggregated data from message_analytics_view query
-    const mockDailyAnalytics = [
+    const mockWeeklyAnalytics = [
       {
-        date: "2026-03-30",
-        campaign_id: 3,
-        campaign_name: "Education Funding",
-        message_count: 42,
+        date: "2026-03-31",
+        campaign_id: 1,
+        campaign_name: "Climate Action",
+        message_count: 38,
       },
     ];
 
-    mockAnalyticsQueryResult.data = mockDailyAnalytics;
+    mockAnalyticsQueryResult.data = mockWeeklyAnalytics;
     mockAnalyticsQueryResult.error = null;
 
     const req = new Request(
-      "http://localhost/api/v1/messages/analytics?days=14",
+      "http://localhost/api/v1/messages/analytics?bucket=week",
       {
         method: "GET",
         headers: {
@@ -183,9 +184,14 @@ describe("Analytics API Integration", () => {
     );
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { analytics: typeof mockDailyAnalytics };
-    expect(body.analytics).toEqual(mockDailyAnalytics);
-    expect(mockAnalyticsFrom).toHaveBeenCalledWith("message_analytics_view");
+    const body = (await res.json()) as {
+      analytics: typeof mockWeeklyAnalytics;
+    };
+    expect(body.analytics).toEqual(mockWeeklyAnalytics);
+    expect(mockAnalyticsFrom).toHaveBeenCalledWith(
+      "message_analytics_weekly_view",
+    );
+    expect(mockAnalyticsGte).not.toHaveBeenCalled();
   });
 
   it("should return empty array when no analytics data is available", async () => {
@@ -233,26 +239,5 @@ describe("Analytics API Integration", () => {
     const body = (await res.json()) as { success: boolean; error: string };
     expect(body.success).toBe(false);
     expect(body.error).toBe("Failed to fetch message analytics");
-  });
-
-  it("should validate days parameter is numeric", async () => {
-    // Mock successful auth
-    mockGetUser.mockResolvedValue({
-      data: { user: { id: "user-123", email: "test@example.com" } },
-      error: null,
-    });
-
-    const req = new Request(
-      "http://localhost/api/v1/messages/analytics?days=invalid",
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer test-token",
-        },
-      },
-    );
-    const res = await app.fetch(req, env);
-    expect(res.status).toBe(400);
   });
 });
