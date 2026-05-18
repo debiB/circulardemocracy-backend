@@ -1,7 +1,7 @@
 // JMAP Client for sending emails via Stalwart mail server
 // JMAP (JSON Meta Application Protocol) is a modern email protocol
 
-import { encodeBasicAuth } from "./stalwart_jmap_auth";
+import { encodeBasicAuth } from "./stalwart_jmap";
 
 /**
  * JMAP session document URL from `JMAP_URL` (trimmed, no trailing slash) + `/.well-known/jmap`.

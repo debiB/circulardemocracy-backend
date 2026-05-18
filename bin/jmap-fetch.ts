@@ -4,9 +4,11 @@ import { DatabaseClient } from "../src/database.js";
 import { processMessage, PoliticianNotFoundError, type Ai, type MessageInput } from "../src/message_processor.js";
 import {
   buildStalwartImpersonationLogin,
+  emailHostedOnDomain,
   encodeBasicAuth,
-} from "../src/stalwart_jmap_auth.js";
-import { normalizeMailDomain } from "../src/stalwart_jmap_env.js";
+  normalizeMailDomain,
+  resolveRelayImpersonationCredentials,
+} from "../src/stalwart_jmap.js";
 import { z } from "zod";
 import Turndown from "turndown";
 import { config as dotenv } from "dotenv";
@@ -16,6 +18,7 @@ import {
   resolveMailAccountIdFromSession,
 } from "../src/jmap_client.js";
 
+// Load `.env` once; all config is read from `process.env` below (no env.ts wrapper).
 dotenv();
 
 const MessageInputSchema = z.object({
@@ -170,6 +173,30 @@ function parseStalwartArgs(args: string[]): StalwartFetchOptions {
   };
 }
 
+function logAllDomainMailboxes(
+  domainKey: string,
+  mailboxes: string[],
+  processing?: string,
+): void {
+  console.log(`Accounts on @${domainKey} (${mailboxes.length}):`);
+  if (mailboxes.length === 0) {
+    console.log("  (none)");
+    return;
+  }
+  const processingLower = processing?.trim().toLowerCase();
+  for (let i = 0; i < mailboxes.length; i++) {
+    const mailbox = mailboxes[i];
+    const isCurrent =
+      processingLower && mailbox.trim().toLowerCase() === processingLower;
+    console.log(
+      `  ${i + 1}. ${mailbox}${isCurrent ? "  <- current" : ""}`,
+    );
+  }
+  if (processing) {
+    console.log(`\nCurrently processing: ${processing}`);
+  }
+}
+
 function printUsage() {
   console.log(`
 JMAP Fetch - Automated ingestion from Stalwart mail server
@@ -191,9 +218,12 @@ ENVIRONMENT VARIABLES:
   JMAP_SERVICE_ACCOUNT_PASSWORD   Required app password for JMAP basic auth
   JMAP_URL                        Required. Mail server base URL (no path); session URL is JMAP_URL + "/.well-known/jmap"
   (Mail account id for this CLI comes from the JMAP session after login.)
-  ALL_DOMAIN                      When set (e.g. circulardemocracy.org), ingest each mailbox on that
-                                  domain using Stalwart impersonation (JMAP_SERVICE_ACCOUNT_EMAIL must be the
-                                  service account; password is the service account app password).
+  ALL_DOMAIN                      When set (e.g. example.org), impersonate via
+                                  RELAY_SERVICE_ACCOUNT_EMAIL / RELAY_SERVICE_ACCOUNT_PASSWORD
+                                  (login: target%relay). Without --user: all DB mailboxes on domain.
+                                  With --user: one mailbox only.
+  RELAY_SERVICE_ACCOUNT_EMAIL     Required for ALL_DOMAIN impersonation (impersonator account).
+  RELAY_SERVICE_ACCOUNT_PASSWORD  Required for ALL_DOMAIN impersonation (impersonator password).
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
 
@@ -919,6 +949,19 @@ async function runStalwartIngestion(
 ): Promise<boolean> {
   const authHeader = encodeBasicAuth(username, password);
   const prefix = logMailbox ? `[${logMailbox}] ` : "";
+  const impersonationIdx = username.indexOf("%");
+
+  if (impersonationIdx > 0) {
+    const target = username.slice(0, impersonationIdx);
+    const impersonator = username.slice(impersonationIdx + 1);
+    console.log(
+      `${prefix}JMAP auth: Stalwart impersonation login "${target}%${impersonator}" (password: RELAY_SERVICE_ACCOUNT_PASSWORD)`,
+    );
+  } else {
+    console.log(
+      `${prefix}JMAP auth: direct Basic login as ${username} (password: JMAP_SERVICE_ACCOUNT_PASSWORD or --password)`,
+    );
+  }
 
   console.log(`${prefix}Connecting to Stalwart JMAP at ${jmapWellKnownUrl}...`);
   const session = await fetchJmapSession(jmapWellKnownUrl, authHeader);
@@ -1078,23 +1121,44 @@ async function main() {
     }
   }
 
-  const username = parsed.user || process.env.JMAP_SERVICE_ACCOUNT_EMAIL;
-  const password =
-    parsed.password || process.env.JMAP_SERVICE_ACCOUNT_PASSWORD;
+  const explicitMailbox = (parsed.user || "").trim();
+  const jmapServiceAccount = (process.env.JMAP_SERVICE_ACCOUNT_EMAIL || "").trim();
+  const cliPasswordOverride = (parsed.password || "").trim();
+  const appPassword =
+    cliPasswordOverride ||
+    (process.env.JMAP_SERVICE_ACCOUNT_PASSWORD || "").trim();
   const allDomainRaw = (process.env.ALL_DOMAIN || "").trim();
+  const relayCreds = resolveRelayImpersonationCredentials(process.env);
+  const impersonationPassword = allDomainRaw
+    ? cliPasswordOverride || relayCreds?.relayPassword || ""
+    : appPassword;
 
-  if (!username) {
+  if (allDomainRaw && !relayCreds && !cliPasswordOverride) {
     console.error(
-      "Error: JMAP_SERVICE_ACCOUNT_EMAIL environment variable or --user must be set",
+      "Error: ALL_DOMAIN mode requires RELAY_SERVICE_ACCOUNT_EMAIL and RELAY_SERVICE_ACCOUNT_PASSWORD.",
     );
     process.exit(1);
   }
 
-  if (!password) {
+  if (allDomainRaw && !impersonationPassword) {
+    console.error(
+      "Error: ALL_DOMAIN impersonation needs RELAY_SERVICE_ACCOUNT_PASSWORD or --password.",
+    );
+    process.exit(1);
+  }
+
+  if (!allDomainRaw && !appPassword) {
     console.error(
       "Error: JMAP_SERVICE_ACCOUNT_PASSWORD environment variable or --password must be set",
     );
     console.error("Create an app password in Stalwart and export it before running CLI.");
+    process.exit(1);
+  }
+
+  if (!allDomainRaw && !explicitMailbox && !jmapServiceAccount) {
+    console.error(
+      "Error: JMAP_SERVICE_ACCOUNT_EMAIL environment variable or --user must be set",
+    );
     process.exit(1);
   }
 
@@ -1123,7 +1187,7 @@ async function main() {
 
     const fetchOptions = parseStalwartArgs(args);
 
-    if (allDomainRaw) {
+    if (allDomainRaw && !explicitMailbox) {
       const domainKey = normalizeMailDomain(allDomainRaw);
       const mailboxes = await db.listStalwartMailboxAddressesForDomain(domainKey);
       if (mailboxes.length === 0) {
@@ -1135,15 +1199,23 @@ async function main() {
       console.log(
         `ALL_DOMAIN mode: ingesting ${mailboxes.length} mailbox(es) on @${domainKey} using Stalwart impersonation.`,
       );
+      logAllDomainMailboxes(domainKey, mailboxes);
       let allOk = true;
-      for (const mailbox of mailboxes) {
-        const principal = buildStalwartImpersonationLogin(username, mailbox);
+      for (let i = 0; i < mailboxes.length; i++) {
+        const mailbox = mailboxes[i];
+        console.log(
+          `\n[${i + 1}/${mailboxes.length}] Currently processing: ${mailbox}`,
+        );
+        const principal = buildStalwartImpersonationLogin(
+          relayCreds!.relayEmail,
+          mailbox,
+        );
         const ok = await runStalwartIngestion(
           db,
           ai,
           fetchOptions,
           principal,
-          password,
+          impersonationPassword,
           jmapWellKnown,
           mailbox,
         );
@@ -1154,13 +1226,38 @@ async function main() {
       process.exit(allOk ? 0 : 1);
     }
 
+    let ingestPrincipal = explicitMailbox || jmapServiceAccount;
+    let logMailbox: string | undefined;
+
+    if (allDomainRaw && explicitMailbox) {
+      const domainKey = normalizeMailDomain(allDomainRaw);
+      if (!emailHostedOnDomain(explicitMailbox, domainKey)) {
+        console.error(
+          `Error: --user ${explicitMailbox} is not on ALL_DOMAIN ${domainKey}.`,
+        );
+        process.exit(1);
+      }
+      ingestPrincipal = buildStalwartImpersonationLogin(
+        relayCreds!.relayEmail,
+        explicitMailbox,
+      );
+      logMailbox = explicitMailbox;
+      const domainMailboxes =
+        await db.listStalwartMailboxAddressesForDomain(domainKey);
+      console.log(
+        `ALL_DOMAIN mode: ingesting single mailbox ${explicitMailbox} via Stalwart impersonation.`,
+      );
+      logAllDomainMailboxes(domainKey, domainMailboxes, explicitMailbox);
+    }
+
     const success = await runStalwartIngestion(
       db,
       ai,
       fetchOptions,
-      username,
-      password,
+      ingestPrincipal,
+      allDomainRaw ? impersonationPassword : appPassword,
       jmapWellKnown,
+      logMailbox,
     );
     process.exit(success ? 0 : 1);
 

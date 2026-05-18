@@ -10,12 +10,13 @@ import {
   JMAPClient,
   resolveMailAccountIdFromSession,
 } from "./jmap_client";
-import { buildStalwartImpersonationLogin } from "./stalwart_jmap_auth";
 import {
+  buildStalwartImpersonationLogin,
   emailHostedOnDomain,
   normalizeMailDomain,
+  resolveRelayImpersonationCredentials,
   type StalwartImpersonationConfig,
-} from "./stalwart_jmap_env";
+} from "./stalwart_jmap";
 import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
 
 export interface WorkerConfig {
@@ -34,12 +35,10 @@ export type MailSendBindings = {
   RELAY_SERVICE_ACCOUNT_EMAIL?: string;
   RELAY_SERVICE_ACCOUNT_PASSWORD?: string;
   /**
-   * When set (e.g. `circulardemocracy.org`), outbound mail uses Stalwart Basic-auth
-   * impersonation (`JMAP_SERVICE_ACCOUNT_EMAIL%fromAddress`) instead of the Supabase relay Bearer.
+   * When set (e.g. from `ALL_DOMAIN` in `.env`), outbound mail uses Stalwart Basic-auth
+   * impersonation (`fromAddress%RELAY_SERVICE_ACCOUNT_EMAIL`) instead of the Supabase relay Bearer.
    */
   ALL_DOMAIN?: string;
-  JMAP_SERVICE_ACCOUNT_EMAIL?: string;
-  JMAP_SERVICE_ACCOUNT_PASSWORD?: string;
 };
 
 function resolveStalwartJmapWorkerConfig(
@@ -55,9 +54,10 @@ function resolveStalwartJmapWorkerConfig(
 
   const allDomainRaw = (env.ALL_DOMAIN || "").trim();
   if (allDomainRaw) {
-    const serviceUsername = (env.JMAP_SERVICE_ACCOUNT_EMAIL || "").trim();
-    const servicePassword = (env.JMAP_SERVICE_ACCOUNT_PASSWORD || "").trim();
-    if (!serviceUsername || !servicePassword) {
+    const relay = resolveRelayImpersonationCredentials(
+      env as Record<string, string | undefined | null>,
+    );
+    if (!relay) {
       return null;
     }
     return {
@@ -66,8 +66,8 @@ function resolveStalwartJmapWorkerConfig(
       jmapBearerToken: "",
       stalwartImpersonation: {
         allDomainLower: normalizeMailDomain(allDomainRaw),
-        serviceUsername,
-        servicePassword,
+        relayAccountEmail: relay.relayEmail,
+        relayAccountPassword: relay.relayPassword,
       },
     };
   }
@@ -318,19 +318,19 @@ async function processSingleMessage(
 
   const jmapClient = imp
     ? new JMAPClient({
-        apiUrl: jmapConfig.jmapApiUrl,
-        accountId: "",
+      apiUrl: jmapConfig.jmapApiUrl,
+      accountId: "",
         basicUsername: buildStalwartImpersonationLogin(
-          imp.serviceUsername,
+          imp.relayAccountEmail,
           outboundIdentity.fromEmail,
         ),
-        basicPassword: imp.servicePassword,
-      })
+        basicPassword: imp.relayAccountPassword,
+    })
     : new JMAPClient({
-        apiUrl: jmapConfig.jmapApiUrl,
-        accountId: jmapConfig.jmapAccountId,
-        bearerToken: jmapConfig.jmapBearerToken,
-      });
+      apiUrl: jmapConfig.jmapApiUrl,
+      accountId: jmapConfig.jmapAccountId,
+      bearerToken: jmapConfig.jmapBearerToken,
+    });
 
   const sendContext = await buildSendContext(
     db,
@@ -501,7 +501,7 @@ async function resolveSingleServiceAccountConfig(
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
     const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
-      ? " For ALL_DOMAIN mode, set JMAP_URL plus JMAP_SERVICE_ACCOUNT_EMAIL and JMAP_SERVICE_ACCOUNT_PASSWORD."
+      ? " For ALL_DOMAIN mode, set JMAP_URL plus RELAY_SERVICE_ACCOUNT_EMAIL and RELAY_SERVICE_ACCOUNT_PASSWORD."
       : "";
     return {
       ok: false,

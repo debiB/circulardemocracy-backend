@@ -24,10 +24,6 @@ serve(
         RELAY_SERVICE_ACCOUNT_PASSWORD:
           process.env.RELAY_SERVICE_ACCOUNT_PASSWORD || "",
         ALL_DOMAIN: process.env.ALL_DOMAIN || "",
-        JMAP_SERVICE_ACCOUNT_EMAIL:
-          process.env.JMAP_SERVICE_ACCOUNT_EMAIL || "",
-        JMAP_SERVICE_ACCOUNT_PASSWORD:
-          process.env.JMAP_SERVICE_ACCOUNT_PASSWORD || "",
       });
     },
     port: 3000,
