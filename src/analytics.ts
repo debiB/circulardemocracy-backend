@@ -58,7 +58,14 @@ const getMessageAnalyticsRoute = createRoute({
         .regex(/^\d+$/)
         .optional()
         .default("7")
-        .describe("Number of days to look back (default: 7)"),
+        .describe(
+          "Number of days to look back for daily analytics (default: 7)",
+        ),
+      bucket: z
+        .enum(["day", "week"])
+        .optional()
+        .default("day")
+        .describe("Aggregation bucket: day (default) or week"),
     }),
   },
   responses: {
@@ -68,7 +75,7 @@ const getMessageAnalyticsRoute = createRoute({
           schema: MessageAnalyticsResponseSchema,
         },
       },
-      description: "Message analytics grouped by day and campaign",
+      description: "Message analytics grouped by day or week and campaign",
     },
     500: {
       content: {
@@ -82,12 +89,12 @@ const getMessageAnalyticsRoute = createRoute({
   tags: ["Analytics"],
   summary: "/api/v1/messages/analytics",
   description:
-    "Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)",
+    "Retrieve message analytics grouped by day (last 7 days by default) or by calendar week",
 });
 
 app.openapi(getMessageAnalyticsRoute, async (c) => {
   try {
-    const { days } = c.req.valid("query");
+    const { days, bucket } = c.req.valid("query");
     const daysBack = parseInt(days, 10);
     const authHeader = c.req.header("Authorization");
     const supabaseUrl = process.env.SUPABASE_URL || c.env.SUPABASE_URL;
@@ -104,11 +111,21 @@ app.openapi(getMessageAnalyticsRoute, async (c) => {
       },
     });
 
-    const { data: analytics, error } = await supabase
-      .from("message_analytics_view")
-      .select("date, campaign_id, campaign_name, message_count")
-      .gte("date", fromDate.toISOString())
-      .order("date", { ascending: true });
+    const sourceView =
+      bucket === "week"
+        ? "message_analytics_weekly_view"
+        : "message_analytics_view";
+    let query = supabase
+      .from(sourceView)
+      .select("date, campaign_id, campaign_name, message_count");
+
+    if (bucket === "day") {
+      query = query.gte("date", fromDate.toISOString());
+    }
+
+    const { data: analytics, error } = await query.order("date", {
+      ascending: true,
+    });
 
     if (error) {
       throw error;

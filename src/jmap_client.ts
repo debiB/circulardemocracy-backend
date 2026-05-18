@@ -3,6 +3,19 @@
 
 import { encodeBasicAuth } from "./stalwart_jmap_auth";
 
+/**
+ * JMAP session document URL from `JMAP_URL` (trimmed, no trailing slash) + `/.well-known/jmap`.
+ */
+export function jmapWellKnownSessionUrl(
+  env: Record<string, string | undefined | null>,
+): string | null {
+  const base = String(env.JMAP_URL ?? "").trim().replace(/\/+$/, "");
+  if (!base) {
+    return null;
+  }
+  return `${base}/.well-known/jmap`;
+}
+
 export interface JMAPConfig {
   apiUrl: string;
   /**
@@ -41,6 +54,22 @@ interface JmapSessionResponse {
 
 interface IdentityGetResponse {
   list?: Array<{ id: string; email?: string | null }>;
+}
+
+export function resolveMailAccountIdFromSession(session: {
+  primaryAccounts?: Record<string, string>;
+  accounts?: Record<string, unknown>;
+}): string {
+  const primaryMailAccount =
+    session.primaryAccounts?.["urn:ietf:params:jmap:mail"];
+  if (primaryMailAccount) {
+    return primaryMailAccount;
+  }
+  const firstAccountId = Object.keys(session.accounts || {})[0];
+  if (firstAccountId) {
+    return firstAccountId;
+  }
+  throw new Error("No JMAP mail account found in session response");
 }
 
 /**
@@ -108,13 +137,7 @@ export class JMAPClient {
       throw new Error("JMAP session response missing apiUrl");
     }
     if (!(this.config.accountId || "").trim()) {
-      const fromSession =
-        session.primaryAccounts?.["urn:ietf:params:jmap:mail"] ||
-        Object.keys(session.accounts || {})[0];
-      if (!fromSession) {
-        throw new Error("JMAP session response missing mail account id");
-      }
-      this.config.accountId = fromSession;
+      this.config.accountId = resolveMailAccountIdFromSession(session);
     }
     this.resolvedPostApiUrl = session.apiUrl;
     return this.resolvedPostApiUrl;

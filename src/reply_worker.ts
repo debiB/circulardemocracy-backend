@@ -4,15 +4,80 @@
 import type { DatabaseClient } from "./database";
 import { resolveOutboundEmailIdentity } from "./email_impersonation";
 import { renderEmailLayout } from "./email_layout";
-import { type EmailMessage, JMAPClient } from "./jmap_client";
+import {
+  type EmailMessage,
+  jmapWellKnownSessionUrl,
+  JMAPClient,
+  resolveMailAccountIdFromSession,
+} from "./jmap_client";
 import { buildStalwartImpersonationLogin } from "./stalwart_jmap_auth";
 import {
   emailHostedOnDomain,
-  resolveStalwartJmapWorkerConfig,
-  type MailSendBindings,
-  type WorkerConfig,
+  normalizeMailDomain,
+  type StalwartImpersonationConfig,
 } from "./stalwart_jmap_env";
 import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
+
+export interface WorkerConfig {
+  jmapApiUrl: string;
+  jmapAccountId: string;
+  jmapBearerToken: string;
+  stalwartImpersonation?: StalwartImpersonationConfig;
+}
+
+/** Worker / runtime bindings used for outbound JMAP + Supabase relay auth. */
+export type MailSendBindings = {
+  JMAP_URL?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_ANON_KEY?: string;
+  /** Supabase user (email) used for password-grant relay tokens to call JMAP as the service identity. */
+  RELAY_SERVICE_ACCOUNT_EMAIL?: string;
+  RELAY_SERVICE_ACCOUNT_PASSWORD?: string;
+  /**
+   * When set (e.g. `circulardemocracy.org`), outbound mail uses Stalwart Basic-auth
+   * impersonation (`JMAP_SERVICE_ACCOUNT_EMAIL%fromAddress`) instead of the Supabase relay Bearer.
+   */
+  ALL_DOMAIN?: string;
+  JMAP_SERVICE_ACCOUNT_EMAIL?: string;
+  JMAP_SERVICE_ACCOUNT_PASSWORD?: string;
+};
+
+function resolveStalwartJmapWorkerConfig(
+  env: MailSendBindings,
+): WorkerConfig | null {
+  const jmapApiUrl =
+    jmapWellKnownSessionUrl(
+      env as Record<string, string | undefined | null>,
+    )?.trim() ?? "";
+  if (!jmapApiUrl) {
+    return null;
+  }
+
+  const allDomainRaw = (env.ALL_DOMAIN || "").trim();
+  if (allDomainRaw) {
+    const serviceUsername = (env.JMAP_SERVICE_ACCOUNT_EMAIL || "").trim();
+    const servicePassword = (env.JMAP_SERVICE_ACCOUNT_PASSWORD || "").trim();
+    if (!serviceUsername || !servicePassword) {
+      return null;
+    }
+    return {
+      jmapApiUrl,
+      jmapAccountId: "",
+      jmapBearerToken: "",
+      stalwartImpersonation: {
+        allDomainLower: normalizeMailDomain(allDomainRaw),
+        serviceUsername,
+        servicePassword,
+      },
+    };
+  }
+
+  return {
+    jmapApiUrl,
+    jmapAccountId: "",
+    jmapBearerToken: "",
+  };
+}
 
 type RuntimeSecretBindings = Record<string, string | undefined>;
 const FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS = [
@@ -436,12 +501,12 @@ async function resolveSingleServiceAccountConfig(
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
     const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
-      ? " For ALL_DOMAIN mode, set STALWART_JMAP_ENDPOINT plus STALWART_USERNAME and STALWART_APP_PASSWORD (service account)."
+      ? " For ALL_DOMAIN mode, set JMAP_URL plus JMAP_SERVICE_ACCOUNT_EMAIL and JMAP_SERVICE_ACCOUNT_PASSWORD."
       : "";
     return {
       ok: false,
       reason:
-        "Stalwart JMAP outbound is not configured. Without ALL_DOMAIN: set STALWART_JMAP_ENDPOINT, STALWART_JMAP_ACCOUNT_ID, and Supabase relay credentials (SUPABASE_URL, SUPABASE_ANON_KEY, STALWART_SUPABASE_RELAY_EMAIL, STALWART_SUPABASE_RELAY_PASSWORD)." +
+        "Single JMAP relay service account is not configured. Set JMAP_URL (base mail server URL)." +
         allDomainHint,
     };
   }
@@ -460,11 +525,15 @@ async function resolveSingleServiceAccountConfig(
     return {
       ok: false,
       reason:
-        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, STALWART_SUPABASE_RELAY_EMAIL, and STALWART_SUPABASE_RELAY_PASSWORD.",
+        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, RELAY_SERVICE_ACCOUNT_EMAIL, and RELAY_SERVICE_ACCOUNT_PASSWORD.",
     };
   }
   const config: WorkerConfig = {
     ...baseConfig,
+    jmapAccountId: await fetchAndResolveMailAccountIdFromSession(
+      baseConfig.jmapApiUrl,
+      relayToken,
+    ),
     jmapBearerToken: relayToken,
   };
 
@@ -472,6 +541,27 @@ async function resolveSingleServiceAccountConfig(
     ok: true,
     config,
   };
+}
+
+async function fetchAndResolveMailAccountIdFromSession(
+  sessionUrl: string,
+  bearerToken: string,
+): Promise<string> {
+  const response = await fetch(sessionUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${bearerToken}`,
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`JMAP session GET failed (${response.status})`);
+  }
+  const session = (await response.json()) as {
+    primaryAccounts?: Record<string, string>;
+    accounts?: Record<string, unknown>;
+  };
+  return resolveMailAccountIdFromSession(session);
 }
 
 function assertNoDynamicCredentialOverrides(env: RuntimeSecretBindings): void {

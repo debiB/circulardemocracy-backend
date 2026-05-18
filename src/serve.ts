@@ -17,17 +17,17 @@ serve(
         SUPABASE_URL: process.env.SUPABASE_URL || "",
         SUPABASE_KEY: process.env.SUPABASE_KEY || "",
         AI: null as any, // Not available in dev mode
-        STALWART_JMAP_ENDPOINT: process.env.STALWART_JMAP_ENDPOINT || "",
-        STALWART_JMAP_ACCOUNT_ID:
-          process.env.STALWART_JMAP_ACCOUNT_ID || "",
+        JMAP_URL: process.env.JMAP_URL || "",
         SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
-        STALWART_SUPABASE_RELAY_EMAIL:
-          process.env.STALWART_SUPABASE_RELAY_EMAIL || "",
-        STALWART_SUPABASE_RELAY_PASSWORD:
-          process.env.STALWART_SUPABASE_RELAY_PASSWORD || "",
+        RELAY_SERVICE_ACCOUNT_EMAIL:
+          process.env.RELAY_SERVICE_ACCOUNT_EMAIL || "",
+        RELAY_SERVICE_ACCOUNT_PASSWORD:
+          process.env.RELAY_SERVICE_ACCOUNT_PASSWORD || "",
         ALL_DOMAIN: process.env.ALL_DOMAIN || "",
-        STALWART_USERNAME: process.env.STALWART_USERNAME || "",
-        STALWART_APP_PASSWORD: process.env.STALWART_APP_PASSWORD || "",
+        JMAP_SERVICE_ACCOUNT_EMAIL:
+          process.env.JMAP_SERVICE_ACCOUNT_EMAIL || "",
+        JMAP_SERVICE_ACCOUNT_PASSWORD:
+          process.env.JMAP_SERVICE_ACCOUNT_PASSWORD || "",
       });
     },
     port: 3000,
