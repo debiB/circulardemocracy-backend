@@ -11,7 +11,6 @@ import {
   PoliticianNotFoundError,
   processMessage,
 } from "./message_processor";
-import { processReplyImmediately } from "./reply_worker";
 import { type MailSendBindings } from "./stalwart_jmap_env";
 
 // Define types for env and app
@@ -207,20 +206,7 @@ app.openapi(messageRoute, async (c) => {
       return c.json({ success: false, error: "Forbidden" }, 403);
     }
 
-    const runtimeSecrets =
-      c.env as unknown as Record<string, string | undefined>;
-    const result = await processMessage(
-      db,
-      c.env.AI,
-      data,
-      async (messageId: number) => {
-        await processReplyImmediately(
-          db,
-          messageId,
-          runtimeSecrets,
-        );
-      },
-    );
+    const result = await processMessage(db, c.env.AI, data);
 
     if (result.status === "duplicate") {
       return c.json(result, 409);

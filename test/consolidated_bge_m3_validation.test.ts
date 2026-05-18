@@ -1472,8 +1472,11 @@ class ConsolidatedBGE_M3_Test {
 }
 
 // Test suite for Vitest
-const runConsolidatedValidation = process.env.RUN_CONSOLIDATED_BGE_M3_TEST === "true";
-const describeConsolidated = runConsolidatedValidation ? describe : describe.skip;
+const runConsolidatedValidation =
+  process.env.RUN_CONSOLIDATED_BGE_M3_TEST === "true";
+const describeConsolidated = runConsolidatedValidation
+  ? describe
+  : describe.skip;
 
 describeConsolidated("Consolidated BGE-M3 Validation", () => {
   it("should run complete BGE-M3 validation test suite", async () => {

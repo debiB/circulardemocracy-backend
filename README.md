@@ -47,7 +47,6 @@ For performance reasons, it should be noted that it's quite common that the same
 - **Personalization**: Support for headers, contact details, and politician branding
 - **Delivery Tracking**: Each send is recorded in `reply_send_logs`; successful sends set `messages.reply_sent_at` and `messages.reply_status = sent` so the worker does not pick the same message again
 - **Inbound auto-reply once per supporter/campaign**: Only the first classified message for a given sender hash + politician + campaign (`duplicate_rank === 0`) is scheduled for an automatic template reply; later messages from the same supporter in that campaign are not auto-replied by this path
-- **Campaign broadcast**: Each broadcast creates new outbound rows per supporter; running broadcast again can send again (by design) unless you add higher-level product rules
 
 ### 🛡️ Privacy-First Architecture
 
@@ -232,11 +231,14 @@ export SUPABASE_ANON_KEY="your-supabase-anon-key"
 export STALWART_APP_PASSWORD="your-stalwart-app-password"
 export STALWART_USERNAME="your-stalwart-username"
 
-# Required for API broadcast / reply worker (from JMAP session: primaryAccounts mail urn → id, e.g. "7")
-export STALWART_JMAP_ACCOUNT_ID="your-jmap-mail-account-id"
+# Required for reply worker: JMAP session URL (typically `/.well-known/jmap`). Mail account id is read from the JMAP session after Supabase relay auth (not from env).
+export STALWART_JMAP_ENDPOINT="https://mail.circulardemocracy.org/.well-known/jmap"
+
+# Supabase password-grant user used to obtain a JWT that authenticates to JMAP as the relay identity (reply worker / API)
+export STALWART_SUPABASE_RELAY_EMAIL="relay-user@..."
+export STALWART_SUPABASE_RELAY_PASSWORD="..."
 
 # Optional
-export STALWART_JMAP_ENDPOINT="https://mail.circulardemocracy.org/.well-known/jmap"
 export API_URL="http://localhost:3000"   # optional; login / generic API calls
 ```
 
@@ -632,7 +634,6 @@ This API is designed to be deployed as a Cloudflare Worker. The `wrangler` CLI, 
     npx wrangler secret put SUPABASE_URL
     npx wrangler secret put SUPABASE_KEY
     npx wrangler secret put STALWART_JMAP_ENDPOINT
-    npx wrangler secret put STALWART_JMAP_ACCOUNT_ID
     npx wrangler secret put SUPABASE_ANON_KEY
     npx wrangler secret put STALWART_SUPABASE_RELAY_EMAIL
     npx wrangler secret put STALWART_SUPABASE_RELAY_PASSWORD
@@ -680,8 +681,7 @@ The platform is designed with privacy-by-design principles:
 
 Reply sending uses one service account for JMAP authentication across all politicians:
 
-- `STALWART_JMAP_ENDPOINT`
-- `STALWART_JMAP_ACCOUNT_ID`
+- `STALWART_JMAP_ENDPOINT` (session URL; mail account id comes from the session response)
 - `SUPABASE_ANON_KEY`
 - `STALWART_SUPABASE_RELAY_EMAIL`
 - `STALWART_SUPABASE_RELAY_PASSWORD`
@@ -711,9 +711,9 @@ In `processMessage()`, an active template reply is only scheduled when `duplicat
 
 The same `external_id` + `channel_source` cannot create two rows; duplicates return early and never get a second reply pipeline for that ingest id.
 
-**Broadcast**
+**Outbound sends**
 
-`/api/v1/campaigns/:id/replies/broadcast` creates **new** synthetic `messages` rows per supporter each time it runs. There is no built-in “only if never broadcast” guard; repeated broadcasts mean repeated sends unless you change product rules.
+Template replies are sent only by the scheduled reply worker (cron), which processes messages in Supabase that are ready to send. HTTP APIs do not trigger JMAP sends.
 
 ## Related Projects
 

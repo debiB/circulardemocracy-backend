@@ -27,6 +27,46 @@ export interface JMAPSendResult {
 interface JmapSessionResponse {
   apiUrl: string;
   primaryAccounts?: Record<string, string>;
+  accounts?: Record<string, unknown>;
+}
+
+/** Derive the JMAP mail account id from a session document (same rules as CLI ingest). */
+export function resolveMailAccountIdFromSession(session: {
+  primaryAccounts?: Record<string, string>;
+  accounts?: Record<string, unknown>;
+}): string {
+  const primaryMailAccount =
+    session.primaryAccounts?.["urn:ietf:params:jmap:mail"];
+  if (primaryMailAccount) {
+    return primaryMailAccount;
+  }
+  const firstAccountId = Object.keys(session.accounts || {})[0];
+  if (firstAccountId) {
+    return firstAccountId;
+  }
+  throw new Error("No JMAP mail account found in session response");
+}
+
+/** GET `/.well-known/jmap` with a bearer token and return the mail account id from the session. */
+export async function fetchMailAccountIdFromSession(
+  sessionUrl: string,
+  bearerToken: string,
+): Promise<string> {
+  const response = await fetch(sessionUrl.trim(), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${bearerToken.trim()}`,
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`JMAP session GET failed (${response.status})`);
+  }
+  const session = (await response.json()) as {
+    primaryAccounts?: Record<string, string>;
+    accounts?: Record<string, unknown>;
+  };
+  return resolveMailAccountIdFromSession(session);
 }
 
 interface IdentityGetResponse {
@@ -243,7 +283,10 @@ export class JMAPClient {
       const authHeader = this.authHeader();
       const apiUrl = await this.resolvePostApiUrl();
       const sentMailboxId = await this.resolveSentMailboxId(apiUrl, authHeader);
-      const identityId = await this.resolveServiceIdentityId(apiUrl, authHeader);
+      const identityId = await this.resolveServiceIdentityId(
+        apiUrl,
+        authHeader,
+      );
 
       const emailObject = this.buildEmailObject(email, sentMailboxId);
 

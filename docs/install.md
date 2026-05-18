@@ -24,7 +24,6 @@ SUPABASE_KEY=your-supabase-key
 
 # Single outbound JMAP relay service account (required):
 STALWART_JMAP_ENDPOINT=https://mail.example.org/.well-known/jmap
-STALWART_JMAP_ACCOUNT_ID=7
 SUPABASE_ANON_KEY=your-supabase-anon-key
 STALWART_SUPABASE_RELAY_EMAIL=relay-user@example.org
 STALWART_SUPABASE_RELAY_PASSWORD=relay-user-password
@@ -52,8 +51,7 @@ npm run db:push
 
 Outbound replies use one global service account for authentication:
 
-- `STALWART_JMAP_ENDPOINT`
-- `STALWART_JMAP_ACCOUNT_ID`
+- `STALWART_JMAP_ENDPOINT` (JMAP session URL; mail account id is read from the session)
 - `SUPABASE_ANON_KEY`
 - `STALWART_SUPABASE_RELAY_EMAIL`
 - `STALWART_SUPABASE_RELAY_PASSWORD`
@@ -62,7 +60,7 @@ Outbound replies use one global service account for authentication:
 
 ### Configure Service Account Credentials
 
-Set the four `STALWART_*` variables above in the same runtime as the API (`.env` locally, Worker secrets in production).
+Set `STALWART_JMAP_ENDPOINT` plus the Supabase relay variables in the same runtime as the API (`.env` locally, Worker secrets in production).
 
 ### Reply sends (brief)
 
@@ -83,7 +81,6 @@ npx wrangler login
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_KEY
 npx wrangler secret put STALWART_JMAP_ENDPOINT
-npx wrangler secret put STALWART_JMAP_ACCOUNT_ID
 npx wrangler secret put SUPABASE_ANON_KEY
 npx wrangler secret put STALWART_SUPABASE_RELAY_EMAIL
 npx wrangler secret put STALWART_SUPABASE_RELAY_PASSWORD

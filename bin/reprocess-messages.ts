@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { DatabaseClient } from "../src/database.js";
+import { resolveMailAccountIdFromSession } from "../src/jmap_client.js";
 import { generateEmbedding, formatEmailContentForEmbedding } from "../src/embedding_service.js";
 import { z } from "zod";
 import Turndown from "turndown";
@@ -129,21 +130,6 @@ function getMethodResponse(
   }
 
   return response[1];
-}
-
-function resolveAccountId(session: JmapSessionResponse): string {
-  const primaryMailAccount =
-    session.primaryAccounts?.["urn:ietf:params:jmap:mail"];
-  if (primaryMailAccount) {
-    return primaryMailAccount;
-  }
-
-  const accountId = Object.keys(session.accounts || {})[0];
-  if (accountId) {
-    return accountId;
-  }
-
-  throw new Error("No JMAP mail account found in session response");
 }
 
 async function fetchEmailById(
@@ -391,7 +377,8 @@ ENVIRONMENT VARIABLES:
   SUPABASE_KEY           Required Supabase key
   STALWART_APP_PASSWORD  Required JMAP app password for fetching message content
   STALWART_USERNAME      Optional JMAP username
-  STALWART_JMAP_ACCOUNT_ID Optional; if unset, taken from session primaryAccounts (mail)
+  STALWART_JMAP_ENDPOINT Optional JMAP session URL (default built-in)
+  Mail account id is read from the JMAP session (not from env).
 
 EXAMPLES:
   reprocess-messages --process-all
@@ -497,8 +484,7 @@ async function reprocessMessages(
     console.log(`Connecting to Stalwart JMAP at ${endpoint}...`);
     jmapSession = await fetchJmapSession(endpoint, jmapAuthHeader);
     jmapAccountId =
-      process.env.STALWART_JMAP_ACCOUNT_ID?.trim() ||
-      resolveAccountId(jmapSession);
+      resolveMailAccountIdFromSession(jmapSession);
     console.log("Connected to Stalwart\n");
   }
 

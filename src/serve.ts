@@ -18,8 +18,6 @@ serve(
         SUPABASE_KEY: process.env.SUPABASE_KEY || "",
         AI: null as any, // Not available in dev mode
         STALWART_JMAP_ENDPOINT: process.env.STALWART_JMAP_ENDPOINT || "",
-        STALWART_JMAP_ACCOUNT_ID:
-          process.env.STALWART_JMAP_ACCOUNT_ID || "",
         SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
         STALWART_SUPABASE_RELAY_EMAIL:
           process.env.STALWART_SUPABASE_RELAY_EMAIL || "",

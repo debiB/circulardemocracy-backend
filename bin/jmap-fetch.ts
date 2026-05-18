@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { DatabaseClient } from "../src/database.js";
+import { resolveMailAccountIdFromSession } from "../src/jmap_client.js";
 import { processMessage, PoliticianNotFoundError, type Ai, type MessageInput } from "../src/message_processor.js";
 import { z } from "zod";
 import Turndown from "turndown";
@@ -182,7 +183,7 @@ ENVIRONMENT VARIABLES:
   STALWART_APP_PASSWORD  Required app password for JMAP auth
   STALWART_USERNAME      Required unless passed with --user
   STALWART_JMAP_ENDPOINT Optional, default: "${STALWART_JMAP_ENDPOINT}"
-  STALWART_JMAP_ACCOUNT_ID Optional; if unset, taken from session primaryAccounts (mail)
+  Mail account id is read from the JMAP session (not from env).
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
 
@@ -390,21 +391,6 @@ function getMethodResponse(
   }
 
   return response[1];
-}
-
-function resolveAccountId(session: JmapSessionResponse): string {
-  const primaryMailAccount =
-    session.primaryAccounts?.["urn:ietf:params:jmap:mail"];
-  if (primaryMailAccount) {
-    return primaryMailAccount;
-  }
-
-  const accountId = Object.keys(session.accounts || {})[0];
-  if (accountId) {
-    return accountId;
-  }
-
-  throw new Error("No JMAP mail account found in session response");
 }
 
 function generateFolderPath(campaignName?: string | null): string {
@@ -867,8 +853,7 @@ async function runStalwartIngestion(
 
   console.log(`Connecting to Stalwart JMAP at ${endpoint}...`);
   const session = await fetchJmapSession(endpoint, authHeader);
-  const accountId =
-    process.env.STALWART_JMAP_ACCOUNT_ID?.trim() || resolveAccountId(session);
+  const accountId = resolveMailAccountIdFromSession(session);
   const mailboxCache = new Map<string, string>();
 
   let rawEmails: JmapEmail[] = [];

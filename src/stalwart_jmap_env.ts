@@ -1,12 +1,9 @@
-import type { WorkerConfig } from "./reply_worker";
-
 /**
  * Environment / Worker bindings for Stalwart JMAP outbound mail.
- * Uses only STALWART_* and optional Supabase relay token credentials.
+ * Mail account id is derived from the JMAP session (see `fetchMailAccountIdFromSession`).
  */
 export type MailSendBindings = {
   STALWART_JMAP_ENDPOINT?: string;
-  STALWART_JMAP_ACCOUNT_ID?: string;
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
   STALWART_SUPABASE_RELAY_EMAIL?: string;
@@ -14,21 +11,22 @@ export type MailSendBindings = {
 };
 
 /**
- * Returns WorkerConfig when all required values are present, else null.
+ * Returns partial WorkerConfig when session URL is present; `jmapAccountId` is filled after session GET.
  */
-export function resolveStalwartJmapWorkerConfig(
-  env: MailSendBindings,
-): WorkerConfig | null {
+export function resolveStalwartJmapWorkerConfig(env: MailSendBindings): {
+  jmapApiUrl: string;
+  jmapAccountId: string;
+  jmapBearerToken: string;
+} | null {
   const jmapApiUrl = (env.STALWART_JMAP_ENDPOINT?.trim() || "").trim();
-  const jmapAccountId = (env.STALWART_JMAP_ACCOUNT_ID?.trim() || "").trim();
 
-  if (!jmapApiUrl || !jmapAccountId) {
+  if (!jmapApiUrl) {
     return null;
   }
 
   return {
     jmapApiUrl,
-    jmapAccountId,
+    jmapAccountId: "",
     jmapBearerToken: "",
   };
 }

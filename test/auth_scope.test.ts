@@ -25,7 +25,7 @@ vi.mock("../src/database", () => ({
 }));
 
 describe("Auth role and scope enforcement", () => {
-  let app: (typeof import("../src/api"))["default"];
+  let app: typeof import("../src/api")["default"];
 
   const env = {
     AI: { run: vi.fn() },
@@ -33,7 +33,6 @@ describe("Auth role and scope enforcement", () => {
     SUPABASE_KEY: "test-key",
     API_KEY: "test-api-key",
     STALWART_JMAP_ENDPOINT: "https://jmap.example.com/.well-known/jmap",
-    STALWART_JMAP_ACCOUNT_ID: "account-1",
     STALWART_USERNAME: "service@example.com",
     STALWART_APP_PASSWORD: "password",
   };
@@ -137,5 +136,4 @@ describe("Auth role and scope enforcement", () => {
       expect.stringContaining("/politicians?id=in.(1)&select="),
     );
   });
-
 });

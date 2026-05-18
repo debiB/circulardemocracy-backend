@@ -21,7 +21,9 @@ export async function getSupabaseRelayAccessToken(
   const supabaseUrl = String(env.SUPABASE_URL || "").trim();
   const supabaseAnonKey = String(env.SUPABASE_ANON_KEY || "").trim();
   const relayEmail = String(env.STALWART_SUPABASE_RELAY_EMAIL || "").trim();
-  const relayPassword = String(env.STALWART_SUPABASE_RELAY_PASSWORD || "").trim();
+  const relayPassword = String(
+    env.STALWART_SUPABASE_RELAY_PASSWORD || "",
+  ).trim();
 
   if (!supabaseUrl || !supabaseAnonKey || !relayEmail || !relayPassword) {
     return null;
