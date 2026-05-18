@@ -12,23 +12,24 @@ API for processing citizen messages to politicians
 
 **Summary:** /api/v1/messages/analytics
 
-Retrieve message analytics showing daily message counts grouped by campaign for the last N days (default: 7 days)
+Retrieve message analytics grouped by day (last 7 days by default) or by calendar week
 
 **Parameters:**
 
 | Name | Type | In | Required | Description |
 |------|------|----|---------|--------------|
-| days | string | query |  | Number of days to look back (default: 7) |
+| days | string | query |  | Number of days to look back for daily analytics (default: 7) |
+| bucket | string | query |  | Aggregation bucket: day (default) or week |
 
 **Responses:**
 
-- **200**: Message analytics grouped by day and campaign
+- **200**: Message analytics grouped by day or week and campaign
 - **500**: Internal server error
 
 **CLI Example:**
 
 ```bash
-./cli /api/v1/messages/analytics --days=example
+./cli /api/v1/messages/analytics --days=example --bucket=example
 ```
 
 ---

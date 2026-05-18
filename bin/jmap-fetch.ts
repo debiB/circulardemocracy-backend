@@ -7,6 +7,10 @@ import { z } from "zod";
 import Turndown from "turndown";
 import { config as dotenv } from "dotenv";
 import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
+import {
+  jmapWellKnownSessionUrl,
+  resolveMailAccountIdFromSession,
+} from "../src/jmap_client.js";
 
 dotenv();
 
@@ -85,6 +89,7 @@ interface JmapEmail {
   id: string;
   messageId?: string[];
   receivedAt?: string;
+  mailboxIds?: Record<string, boolean>;
   subject?: string;
   from?: JmapAddress[];
   to?: JmapAddress[];
@@ -96,8 +101,6 @@ interface JmapEmail {
   bodyValues?: Record<string, JmapBodyValue>;
 }
 
-const STALWART_JMAP_ENDPOINT =
-  "https://mail.circulardemocracy.org/.well-known/jmap";
 const turndownService = new Turndown({
   headingStyle: "atx",
   bulletListMarker: "-",
@@ -171,8 +174,8 @@ USAGE:
   jmap-fetch [--user <username>] [--password <password>] [options]
 
 OPTIONS:
-  --user <username>      JMAP username (default: STALWART_USERNAME env)
-  --password <password>  JMAP app password (default: STALWART_APP_PASSWORD env)
+  --user <username>      JMAP mailbox email (default: JMAP_SERVICE_ACCOUNT_EMAIL env)
+  --password <password>  JMAP app password (default: JMAP_SERVICE_ACCOUNT_PASSWORD env)
   --process-all          Fetch all available messages (default when no filter provided)
   --since <date>         Fetch messages received after date (ISO 8601)
   --message-id <id>      Fetch one specific message (JMAP ID or Message-ID header)
@@ -180,10 +183,10 @@ OPTIONS:
   -h, --help             Show this help message
 
 ENVIRONMENT VARIABLES:
-  STALWART_APP_PASSWORD  Required app password for JMAP auth
-  STALWART_USERNAME      Required unless passed with --user
-  STALWART_JMAP_ENDPOINT Optional, default: "${STALWART_JMAP_ENDPOINT}"
-  Mail account id is read from the JMAP session (not from env).
+  JMAP_SERVICE_ACCOUNT_EMAIL      Required unless passed with --user
+  JMAP_SERVICE_ACCOUNT_PASSWORD  Required app password for JMAP basic auth
+  JMAP_URL               Required. Mail server base URL (no path); session URL is JMAP_URL + "/.well-known/jmap"
+  (Mail account id for this CLI comes from the JMAP session after login.)
   SUPABASE_URL           Required Supabase URL
   SUPABASE_KEY           Required Supabase key
 
@@ -484,6 +487,48 @@ async function moveEmailToMailbox(
   ]);
 }
 
+async function resolveInboxMailboxId(
+  apiUrl: string,
+  authHeader: string,
+  accountId: string,
+): Promise<string> {
+  const queryResponses = await jmapCall(apiUrl, authHeader, [
+    [
+      "Mailbox/query",
+      {
+        accountId,
+        filter: { role: "inbox" },
+        position: 0,
+        limit: 1,
+      },
+      "queryInboxMailbox",
+    ],
+    [
+      "Mailbox/get",
+      {
+        accountId,
+        "#ids": {
+          resultOf: "queryInboxMailbox",
+          name: "Mailbox/query",
+          path: "/ids",
+        },
+      },
+      "getInboxMailbox",
+    ],
+  ]);
+
+  const getData = getMethodResponse(
+    queryResponses,
+    "Mailbox/get",
+    "getInboxMailbox",
+  );
+  if (Array.isArray(getData.list) && getData.list.length > 0 && getData.list[0]?.id) {
+    return getData.list[0].id as string;
+  }
+
+  throw new Error("Inbox mailbox not found for JMAP account");
+}
+
 async function fetchEmailPage(
   apiUrl: string,
   authHeader: string,
@@ -492,15 +537,18 @@ async function fetchEmailPage(
   position: number,
   limit: number,
 ): Promise<JmapEmail[]> {
+  const queryArgs: Record<string, unknown> = {
+    accountId,
+    position,
+    limit,
+  };
+  if (filter !== null) {
+    queryArgs.filter = filter;
+  }
   const methodResponses = await jmapCall(apiUrl, authHeader, [
     [
       "Email/query",
-      {
-        accountId,
-        filter,
-        position,
-        limit,
-      },
+      queryArgs,
       "query",
     ],
     [
@@ -516,6 +564,7 @@ async function fetchEmailPage(
           "id",
           "messageId",
           "receivedAt",
+          "mailboxIds",
           "subject",
           "from",
           "to",
@@ -585,6 +634,7 @@ async function fetchEmailById(
   apiUrl: string,
   authHeader: string,
   accountId: string,
+  inboxMailboxId: string,
   messageId: string,
 ): Promise<JmapEmail[]> {
   const directGetResponses = await jmapCall(apiUrl, authHeader, [
@@ -597,6 +647,7 @@ async function fetchEmailById(
           "id",
           "messageId",
           "receivedAt",
+          "mailboxIds",
           "subject",
           "from",
           "to",
@@ -620,7 +671,12 @@ async function fetchEmailById(
     "getById",
   );
   if (Array.isArray(directGet.list) && directGet.list.length > 0) {
-    return directGet.list as JmapEmail[];
+    const inboxDirectHits = (directGet.list as JmapEmail[]).filter(
+      (email) => email.mailboxIds?.[inboxMailboxId] === true,
+    );
+    if (inboxDirectHits.length > 0) {
+      return inboxDirectHits;
+    }
   }
 
   const queryResponses = await jmapCall(apiUrl, authHeader, [
@@ -629,7 +685,11 @@ async function fetchEmailById(
       {
         accountId,
         filter: {
-          header: ["Message-ID", messageId],
+          operator: "AND",
+          conditions: [
+            { inMailbox: inboxMailboxId },
+            { header: ["Message-ID", messageId] },
+          ],
         },
         position: 0,
         limit: 1,
@@ -649,6 +709,7 @@ async function fetchEmailById(
           "id",
           "messageId",
           "receivedAt",
+          "mailboxIds",
           "subject",
           "from",
           "to",
@@ -667,7 +728,11 @@ async function fetchEmailById(
   ]);
 
   const byHeader = getMethodResponse(queryResponses, "Email/get", "getByHeader");
-  return Array.isArray(byHeader.list) ? (byHeader.list as JmapEmail[]) : [];
+  return Array.isArray(byHeader.list)
+    ? (byHeader.list as JmapEmail[]).filter(
+      (email) => email.mailboxIds?.[inboxMailboxId] === true,
+    )
+    : [];
 }
 
 function printStalwartDryRun(messages: MessageInput[]): void {
@@ -846,14 +911,18 @@ async function runStalwartIngestion(
   options: StalwartFetchOptions,
   username: string,
   password: string,
+  jmapWellKnownUrl: string,
 ): Promise<boolean> {
-  const endpoint = process.env.STALWART_JMAP_ENDPOINT || STALWART_JMAP_ENDPOINT;
-
   const authHeader = encodeBasicAuth(username, password);
 
-  console.log(`Connecting to Stalwart JMAP at ${endpoint}...`);
-  const session = await fetchJmapSession(endpoint, authHeader);
+  console.log(`Connecting to Stalwart JMAP at ${jmapWellKnownUrl}...`);
+  const session = await fetchJmapSession(jmapWellKnownUrl, authHeader);
   const accountId = resolveMailAccountIdFromSession(session);
+  const inboxMailboxId = await resolveInboxMailboxId(
+    session.apiUrl,
+    authHeader,
+    accountId,
+  );
   const mailboxCache = new Map<string, string>();
 
   let rawEmails: JmapEmail[] = [];
@@ -863,6 +932,7 @@ async function runStalwartIngestion(
       session.apiUrl,
       authHeader,
       accountId,
+      inboxMailboxId,
       options.messageId,
     );
   } else if (options.since) {
@@ -872,15 +942,21 @@ async function runStalwartIngestion(
       session.apiUrl,
       authHeader,
       accountId,
-      { after: sinceIso },
+      {
+        operator: "AND",
+        conditions: [
+          { inMailbox: inboxMailboxId },
+          { after: sinceIso },
+        ],
+      },
     );
   } else if (options.processAll) {
-    console.log("Fetching all messages from Stalwart...");
+    console.log("Fetching inbound inbox messages from Stalwart...");
     rawEmails = await fetchAllEmails(
       session.apiUrl,
       authHeader,
       accountId,
-      null,
+      { inMailbox: inboxMailboxId },
     );
   }
 
@@ -997,17 +1073,30 @@ async function main() {
     }
   }
 
-  const username = parsed.user || process.env.STALWART_USERNAME;
-  const password = parsed.password || process.env.STALWART_APP_PASSWORD || process.env.STALWART_PASSWORD;
+  const username = parsed.user || process.env.JMAP_SERVICE_ACCOUNT_EMAIL;
+  const password =
+    parsed.password || process.env.JMAP_SERVICE_ACCOUNT_PASSWORD;
 
   if (!username) {
-    console.error("Error: STALWART_USERNAME environment variable or --user must be set");
+    console.error(
+      "Error: JMAP_SERVICE_ACCOUNT_EMAIL environment variable or --user must be set",
+    );
     process.exit(1);
   }
 
   if (!password) {
-    console.error("Error: STALWART_APP_PASSWORD environment variable or --password must be set");
+    console.error(
+      "Error: JMAP_SERVICE_ACCOUNT_PASSWORD environment variable or --password must be set",
+    );
     console.error("Create an app password in Stalwart and export it before running CLI.");
+    process.exit(1);
+  }
+
+  const jmapWellKnown = jmapWellKnownSessionUrl(process.env);
+  if (!jmapWellKnown) {
+    console.error(
+      "Error: Set JMAP_URL to your mail server base URL (e.g. https://mail.example.org).",
+    );
     process.exit(1);
   }
 
@@ -1027,7 +1116,14 @@ async function main() {
     const ai: Ai = new CliAi();
 
     const fetchOptions = parseStalwartArgs(args);
-    const success = await runStalwartIngestion(db, ai, fetchOptions, username, password);
+    const success = await runStalwartIngestion(
+      db,
+      ai,
+      fetchOptions,
+      username,
+      password,
+      jmapWellKnown,
+    );
     process.exit(success ? 0 : 1);
 
   } catch (error) {

@@ -8,11 +8,11 @@ import { processScheduledReplies } from "../src/reply_worker";
 
 describe("Reply Worker", () => {
   const runtimeSecrets = {
-    STALWART_JMAP_ENDPOINT: "https://jmap.example.com/.well-known/jmap",
+    JMAP_URL: "https://jmap.example.com",
     SUPABASE_URL: "https://test.supabase.co",
     SUPABASE_ANON_KEY: "anon-key",
-    STALWART_SUPABASE_RELAY_EMAIL: "relay@example.com",
-    STALWART_SUPABASE_RELAY_PASSWORD: "relay-pass",
+    RELAY_SERVICE_ACCOUNT_EMAIL: "relay@example.com",
+    RELAY_SERVICE_ACCOUNT_PASSWORD: "relay-pass",
   };
 
   const mockDb = {
@@ -42,9 +42,9 @@ describe("Reply Worker", () => {
       const url =
         typeof input === "string"
           ? input
-          : input instanceof Request
-            ? input.url
-            : input.href;
+          : input instanceof URL
+            ? input.href
+            : input.url;
       if (url.includes("/auth/v1/token?grant_type=password")) {
         return new Response(
           JSON.stringify({
@@ -54,12 +54,12 @@ describe("Reply Worker", () => {
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
       }
-      if (url.includes(".well-known/jmap")) {
+      if (url.includes("/.well-known/jmap")) {
         return new Response(
           JSON.stringify({
-            apiUrl: "https://jmap.example.com/api",
+            apiUrl: "https://jmap.example.com/jmap",
             primaryAccounts: {
-              "urn:ietf:params:jmap:mail": "account-from-session",
+              "urn:ietf:params:jmap:mail": "account-1",
             },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },

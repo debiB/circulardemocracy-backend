@@ -983,8 +983,8 @@ Commands:
   reprocess-messages    Reprocess and reclassify existing messages
   <endpoint>            API endpoint path (e.g., campaigns, users/:id)
 
-Outbound JMAP (reply worker): set STALWART_JMAP_ENDPOINT to the JMAP session URL
-(/.well-known/jmap). The mail account id is read from the session response, not from CLI flags.
+Outbound JMAP (reply worker): set JMAP_URL to the mail server base URL; session URL is
+JMAP_URL + "/.well-known/jmap". The mail account id is read from the session response, not from CLI flags.
 
 Campaign Management:
   add-campaign --name <name> [--text <text>] [--description <desc>]
@@ -1025,8 +1025,8 @@ Message Reprocessing:
       --process-all         Process all messages (default if no filter)
       --dry-run             Preview without making changes
       --no-move-to-folders  Disable moving messages to campaign folders (enabled unless --dry-run)
-      --username <user>     JMAP username (default: STALWART_USERNAME env, no hardcoded fallback)
-      --password <pass>     JMAP password (default: STALWART_APP_PASSWORD env)
+      --username <user>     JMAP mailbox email (default: JMAP_SERVICE_ACCOUNT_EMAIL env)
+      --password <pass>     JMAP app password (default: JMAP_SERVICE_ACCOUNT_PASSWORD env)
 
 API Options:
   -m, --method     HTTP method (GET, POST, PUT, DELETE) [default: GET]

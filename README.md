@@ -227,18 +227,18 @@ export SUPABASE_KEY="your-supabase-service-or-backend-key"
 # (the CLI builds a Supabase client with SUPABASE_ANON_KEY for that command).
 export SUPABASE_ANON_KEY="your-supabase-anon-key"
 
-# Required for JMAP commands (`jmap-fetch`, `reprocess-messages`)
-export STALWART_APP_PASSWORD="your-stalwart-app-password"
-export STALWART_USERNAME="your-stalwart-username"
 
-# Required for reply worker: JMAP session URL (typically `/.well-known/jmap`). Mail account id is read from the JMAP session after Supabase relay auth (not from env).
-export STALWART_JMAP_ENDPOINT="https://mail.circulardemocracy.org/.well-known/jmap"
+# Mail server base URL (no path). Session URL is ${JMAP_URL%/}/.well-known/jmap
+export JMAP_URL="https://mail.example.org"
 
-# Supabase password-grant user used to obtain a JWT that authenticates to JMAP as the relay identity (reply worker / API)
-export STALWART_SUPABASE_RELAY_EMAIL="relay-user@..."
-export STALWART_SUPABASE_RELAY_PASSWORD="..."
+# Supabase relay identity (password grant) used by the reply worker to obtain a JWT for JMAP send
+export RELAY_SERVICE_ACCOUNT_EMAIL="relay-service@yourdomain.com"
+export RELAY_SERVICE_ACCOUNT_PASSWORD="relay-user-password"
 
-# Optional
+# For JMAP CLIs only (`jmap-fetch`, `reprocess-messages`): mailbox basic auth
+export JMAP_SERVICE_ACCOUNT_EMAIL="mailbox@yourdomain.com"
+export JMAP_SERVICE_ACCOUNT_PASSWORD="your-jmap-app-password"
+
 export API_URL="http://localhost:3000"   # optional; login / generic API calls
 ```
 
@@ -389,8 +389,8 @@ npm run jmap-fetch -- [--user <username>] [--password <password>] [options]
 
 **Options:**
 
-- `--user <username>`: JMAP username (default: `STALWART_USERNAME` env)
-- `--password <password>`: JMAP app password (default: `STALWART_APP_PASSWORD` env)
+- `--user <username>`: JMAP mailbox email (default: `JMAP_SERVICE_ACCOUNT_EMAIL` env)
+- `--password <password>`: JMAP app password (default: `JMAP_SERVICE_ACCOUNT_PASSWORD` env)
 - `--process-all`: Fetch all available messages (default when no filter provided)
 - `--since <date>`: Fetch messages received after a date (ISO 8601)
 - `--message-id <id>`: Fetch one specific message (JMAP ID or Message-ID header)
@@ -399,6 +399,7 @@ npm run jmap-fetch -- [--user <username>] [--password <password>] [options]
 
 **Behavior notes:**
 
+- The JMAP mail account id is taken from the session (`primaryAccounts` mail) after login.
 - Normal runs automatically move each successfully processed message to a campaign folder in Stalwart.
 - If no campaign match is found, the message is stored with `campaign_id = null` and moved to the `Unclassified` folder.
 - Dry runs never move messages.
@@ -425,7 +426,7 @@ npm run jmap-fetch -- --user dibora --password mypass --process-all
 
 #### 4. Message Reprocessing (`reprocess-messages`)
 
-Recompute embeddings and classifications for existing messages.
+Recompute embeddings and classifications for existing messages. When JMAP is used, the mail account id comes from the session after login (same as `jmap-fetch`).
 
 **Usage:**
 
@@ -439,9 +440,9 @@ npx tsx bin/reprocess-messages.ts [options]
 
 **Options:**
 
-- `--user <username>`: JMAP username (default: `STALWART_USERNAME` env)
-- `--password <password>`: JMAP app password (default: `STALWART_APP_PASSWORD` env)
-- `--process-all`: Reprocess uncategorized messages from Stalwart inbox (`campaign_id` is null)
+- `--user <username>`: JMAP mailbox email (default: `JMAP_SERVICE_ACCOUNT_EMAIL` env)
+- `--password <password>`: JMAP app password (default: `JMAP_SERVICE_ACCOUNT_PASSWORD` env)
+- `--process-all`: Reprocess messages with no campaign from Stalwart inbox (`campaign_id` is null)
 - `--campaign-id <id>`: Only reprocess messages for a specific campaign
 - `--since <date>`: Only reprocess messages received after a date (ISO 8601)
 - `--limit <number>`: Maximum number of messages to reprocess
@@ -633,10 +634,10 @@ This API is designed to be deployed as a Cloudflare Worker. The `wrangler` CLI, 
     ```bash
     npx wrangler secret put SUPABASE_URL
     npx wrangler secret put SUPABASE_KEY
-    npx wrangler secret put STALWART_JMAP_ENDPOINT
+    npx wrangler secret put JMAP_URL
     npx wrangler secret put SUPABASE_ANON_KEY
-    npx wrangler secret put STALWART_SUPABASE_RELAY_EMAIL
-    npx wrangler secret put STALWART_SUPABASE_RELAY_PASSWORD
+    npx wrangler secret put RELAY_SERVICE_ACCOUNT_EMAIL
+    npx wrangler secret put RELAY_SERVICE_ACCOUNT_PASSWORD
     ```
 
 3.  **Deploy the Worker**
@@ -681,12 +682,64 @@ The platform is designed with privacy-by-design principles:
 
 Reply sending uses one service account for JMAP authentication across all politicians:
 
-- `STALWART_JMAP_ENDPOINT` (session URL; mail account id comes from the session response)
+- `JMAP_URL` (base mail server; session URL is `JMAP_URL` + `/.well-known/jmap`)
 - `SUPABASE_ANON_KEY`
-- `STALWART_SUPABASE_RELAY_EMAIL`
-- `STALWART_SUPABASE_RELAY_PASSWORD`
+- `RELAY_SERVICE_ACCOUNT_EMAIL`
+- `RELAY_SERVICE_ACCOUNT_PASSWORD`
 
 At runtime, the reply worker resolves these values from Worker bindings (`c.env`) and local `.env` (`process.env`) for development.
+
+## Stalwart Master Account Setup (Supabase IdP)
+
+Use this when one **master/service account** sends outbound emails on behalf of **all politician mailboxes** via impersonation.
+
+### 1) Read the official Stalwart auth docs
+
+- Permissions: <https://stalw.art/docs/auth/authorization/permissions/>
+- Roles: <https://stalw.art/docs/auth/authorization/roles>
+- Administrators + impersonation: <https://stalw.art/docs/auth/authorization/administrator>
+
+### 2) Create a dedicated role for impersonation
+
+In Stalwart WebUI: `Management -> Directory -> Roles`, create a role (example: `cd-impersonation-sender`) and assign:
+
+- `impersonate` (required): allows acting on behalf of another account.
+- `email-send` (required for SMTP/JMAP sending).
+- `jmap-email-submission-set` (required for JMAP submission API).
+- `jmap-email-get` and `jmap-mailbox-get` (recommended for troubleshooting/validation in JMAP flows).
+
+Authentication permission depends on how the master account signs in:
+
+- `authenticate-oauth` (required when using Supabase as IdP / OAuth login flow).
+
+Keep this role minimal (least privilege). Do not assign full `admin` unless you explicitly need server-wide administration.
+
+### 3) Assign role to the service/master account
+
+Create (or select) one non-human Stalwart master account used by the backend worker and attach the impersonation role to it. This single account is the sender identity that impersonates each politician mailbox at send time.
+
+### 4) Impersonation login format
+
+Stalwart impersonation uses a composite login:
+
+- `<target_mailbox>%<impersonator_account>`
+
+Example:
+
+- `politician-1@circulardemocracy.org%mailer-service@circulardemocracy.org`
+
+Use the credential type that matches your auth flow:
+
+- OAuth/IdP flow: use the master account OAuth token/session. If a password is required for that master/service account, use its **service account password**—**not** a Stalwart **app password**. 
+- Password flow: use the impersonator account password.
+
+### 5) Supabase as IdP notes
+
+- Keep Supabase as the identity source for user authentication.
+- Use one dedicated Stalwart master/service account for backend mailbox impersonation across all politicians.
+- Do not reuse politician personal credentials in backend automation.
+- Grant only the minimum permissions above; avoid broad admin permissions.
+- Store service account secrets/tokens in runtime secrets (`wrangler secret put ...`), not in source control.
 
 ## Reply deduplication and persistence
 
