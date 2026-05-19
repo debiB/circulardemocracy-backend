@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { buildSupabaseClientOptions } from "./supabase_client_options";
 
 // Database Layer - Supabase REST API Client
 // Handles all database operations for Circular Democracy
@@ -76,17 +77,21 @@ export class DatabaseClient {
     if (config.accessToken) {
       headers.Authorization = `Bearer ${config.accessToken}`;
     }
-    this.supabase = createClient(config.url, config.key, {
-      auth: {
-        persistSession: false,
-      },
-      // Keep explicit fetch for Worker/Node parity.
-      // Authorization header above scopes this client to the caller JWT.
-      global: {
-        fetch: (...args) => fetch(...args),
-        headers,
-      },
-    });
+    this.supabase = createClient(
+      config.url,
+      config.key,
+      buildSupabaseClientOptions({
+        auth: {
+          persistSession: false,
+        },
+        // Keep explicit fetch for Worker/Node parity.
+        // Authorization header above scopes this client to the caller JWT.
+        global: {
+          fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
+          headers,
+        },
+      }),
+    );
   }
 
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

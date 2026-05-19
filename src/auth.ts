@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
 import { DatabaseClient as DatabaseClientImpl } from "./database";
+import { buildSupabaseClientOptions } from "./supabase_client_options";
 
 export type AppRole = "politician" | "staff" | "admin";
 
@@ -31,7 +32,11 @@ export const authMiddleware: MiddlewareHandler = createMiddleware(
     const token = authHeader.substring(7); // Remove "Bearer " prefix
 
     // Create Supabase client and verify the token
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseKey,
+      buildSupabaseClientOptions(),
+    );
 
     try {
       const {

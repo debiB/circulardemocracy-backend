@@ -2,6 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { createClient } from "@supabase/supabase-js";
 import { authMiddleware, requireAppRole } from "./auth";
 import type { DatabaseClient } from "./database";
+import { buildSupabaseClientOptions } from "./supabase_client_options";
 
 // Define types for env and app
 interface Env {
@@ -102,14 +103,18 @@ app.openapi(getMessageAnalyticsRoute, async (c) => {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - daysBack);
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: authHeader ? { Authorization: authHeader } : {},
-      },
-      auth: {
-        persistSession: false,
-      },
-    });
+    const supabase = createClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      buildSupabaseClientOptions({
+        global: {
+          headers: authHeader ? { Authorization: authHeader } : {},
+        },
+        auth: {
+          persistSession: false,
+        },
+      }),
+    );
 
     const sourceView =
       bucket === "week"
