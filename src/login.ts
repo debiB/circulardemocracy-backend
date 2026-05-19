@@ -1,6 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { createClient } from "@supabase/supabase-js";
-import { buildSupabaseClientOptions } from "./supabase_client_options";
 
 // Define types for env and app
 interface Env {
@@ -80,7 +79,6 @@ app.openapi(loginRoute, async (c) => {
   const supabase = createClient(
     process.env.SUPABASE_URL || c.env.SUPABASE_URL,
     process.env.SUPABASE_KEY || c.env.SUPABASE_KEY,
-    buildSupabaseClientOptions(),
   );
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
