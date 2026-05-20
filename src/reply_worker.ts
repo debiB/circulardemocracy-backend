@@ -143,6 +143,19 @@ export async function processScheduledReplies(
   }
 }
 
+export async function processReplyImmediately(
+  db: DatabaseClient,
+  messageId: number,
+  runtimeSecrets?: RuntimeSecretBindings,
+): Promise<void> {
+  const message = await getMessageById(db, messageId);
+  if (!message) {
+    throw new Error(`Message ${messageId} not eligible for immediate reply`);
+  }
+
+  await processSingleMessage(db, message, runtimeSecrets);
+}
+
 // Maximum number of retry attempts before giving up
 const MAX_RETRY_ATTEMPTS = 10;
 const RETRY_DELAYS_MINUTES = [5, 15, 60];
@@ -169,6 +182,27 @@ async function getMessagesReadyToSend(
   } catch (error) {
     console.error("Error fetching messages to send");
     throw error;
+  }
+}
+
+async function getMessageById(
+  db: DatabaseClient,
+  messageId: number,
+): Promise<MessageToProcess | null> {
+  try {
+    const record = await db.getMessageReadyToSendById(messageId);
+
+    if (!record) {
+      return null;
+    }
+
+    return {
+      ...record,
+      reply_retry_count: record.reply_retry_count ?? 0,
+    };
+  } catch (error) {
+    console.error("Error fetching message by ID");
+    return null;
   }
 }
 
