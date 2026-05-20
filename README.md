@@ -47,8 +47,6 @@ For performance reasons, it should be noted that it's quite common that the same
 - **Personalization**: Support for headers, contact details, and politician branding
 - **Delivery Tracking**: Each send is recorded in `reply_send_logs`; successful sends set `messages.reply_sent_at` so the worker does not pick the same message again
 - **Inbound auto-reply once per supporter/campaign**: Only the first classified message for a given sender hash + politician + campaign (`duplicate_rank === 0`) is scheduled for an automatic template reply; later messages from the same supporter in that campaign are not auto-replied by this path
-- **Campaign broadcast**: Each broadcast creates new outbound rows per supporter; running broadcast again can send again (by design) unless you add higher-level product rules
-
 ### 🛡️ Privacy-First Architecture
 
 - **Two-Tier Storage System**:
@@ -311,7 +309,7 @@ npx tsx bin/cli reprocess-messages --process-all --dry-run
 npx tsx bin/cli reprocess-messages --process-all --no-move-to-folders
 ```
 
-**Reply send testing (same code path as cron / `worker/process-replies`):**
+**Reply send testing (same code path as Cloudflare cron):**
 
 ```bash
 # Process all messages ready to send (pending/scheduled, reply_sent_at null)
@@ -781,10 +779,6 @@ In `processMessage()`, an active template reply is only scheduled when `duplicat
 **Duplicate ingest**
 
 The same `external_id` + `channel_source` cannot create two rows; duplicates return early and never get a second reply pipeline for that ingest id.
-
-**Broadcast**
-
-`/api/v1/campaigns/:id/replies/broadcast` creates **new** synthetic `messages` rows per supporter each time it runs. There is no built-in “only if never broadcast” guard; repeated broadcasts mean repeated sends unless you change product rules.
 
 ## Related Projects
 
