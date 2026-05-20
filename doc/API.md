@@ -429,26 +429,6 @@ Check health status of the Stalwart hook service
 
 ---
 
-### /api/v1/worker/health
-
-#### GET
-
-**Summary:** /api/v1/worker/health
-
-Check health status of the reply worker service
-
-**Responses:**
-
-- **200**: Worker service health check
-
-**CLI Example:**
-
-```bash
-./cli /api/v1/worker/health
-```
-
----
-
 ### /mta-hook
 
 #### POST

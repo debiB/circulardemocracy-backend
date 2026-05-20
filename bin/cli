@@ -1031,7 +1031,7 @@ Message Reprocessing:
 
 Reply sending (test):
   send-replies [--message-id <id> | --campaign-id <id> | --campaign-name <hint>]
-    Uses processScheduledReplies / processReplyImmediately from reply_worker (same as cron/API).
+    Uses processScheduledReplies / processReplyImmediately from reply_worker (same as Cloudflare cron).
     Set ALL_DOMAIN + RELAY_* in .env for Stalwart impersonation; otherwise Supabase relay JWT.
 
 API Options:

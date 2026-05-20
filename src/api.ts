@@ -1,6 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import analyticsApp from "./analytics";
-import { authMiddleware, requireAppRole } from "./auth";
 import campaignsApp from "./campaigns";
 import { DatabaseClient } from "./database";
 import loginApp from "./login";
@@ -24,11 +23,6 @@ interface Variables {
 }
 
 const app = new OpenAPIHono<{ Bindings: Env; Variables: Variables }>();
-const WorkerHealthResponseSchema = z.object({
-  status: z.literal("ok"),
-  service: z.literal("reply-worker"),
-  timestamp: z.string(),
-});
 
 const MainHealthResponseSchema = z.object({
   status: z.literal("ok"),
@@ -80,40 +74,6 @@ app.openapi(mainHealthRoute, (c) => {
     service: "main-api",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
-  });
-});
-
-// =============================================================================
-// WORKER ENDPOINTS
-// =============================================================================
-
-app.use("/api/v1/worker/*", authMiddleware);
-app.use("/api/v1/worker/*", requireAppRole("admin"));
-
-const workerHealthRoute = createRoute({
-  method: "get",
-  path: "/api/v1/worker/health",
-  security: [{ Bearer: [] }],
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: WorkerHealthResponseSchema,
-        },
-      },
-      description: "Worker service health check",
-    },
-  },
-  tags: ["Worker"],
-  summary: "/api/v1/worker/health",
-  description: "Check health status of the reply worker service",
-});
-
-app.openapi(workerHealthRoute, (c) => {
-  return c.json({
-    status: "ok",
-    service: "reply-worker",
-    timestamp: new Date().toISOString(),
   });
 });
 

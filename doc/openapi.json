@@ -1729,54 +1729,6 @@
         }
       }
     },
-    "/api/v1/worker/health": {
-      "get": {
-        "security": [
-          {
-            "Bearer": []
-          }
-        ],
-        "tags": [
-          "Worker"
-        ],
-        "summary": "/api/v1/worker/health",
-        "description": "Check health status of the reply worker service",
-        "responses": {
-          "200": {
-            "description": "Worker service health check",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "ok"
-                      ]
-                    },
-                    "service": {
-                      "type": "string",
-                      "enum": [
-                        "reply-worker"
-                      ]
-                    },
-                    "timestamp": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "status",
-                    "service",
-                    "timestamp"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/mta-hook": {
       "post": {
         "tags": [

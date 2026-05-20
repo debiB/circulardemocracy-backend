@@ -47,7 +47,6 @@ For performance reasons, it should be noted that it's quite common that the same
 - **Personalization**: Support for headers, contact details, and politician branding
 - **Delivery Tracking**: Each send is recorded in `reply_send_logs`; successful sends set `messages.reply_sent_at` so the worker does not pick the same message again
 - **Inbound auto-reply once per supporter/campaign**: Only the first classified message for a given sender hash + politician + campaign (`duplicate_rank === 0`) is scheduled for an automatic template reply; later messages from the same supporter in that campaign are not auto-replied by this path
-
 ### 🛡️ Privacy-First Architecture
 
 - **Two-Tier Storage System**:
@@ -310,7 +309,7 @@ npx tsx bin/cli reprocess-messages --process-all --dry-run
 npx tsx bin/cli reprocess-messages --process-all --no-move-to-folders
 ```
 
-**Reply send testing (same code path as cron / `worker/process-replies`):**
+**Reply send testing (same code path as Cloudflare cron):**
 
 ```bash
 # Process all messages ready to send (pending/scheduled, reply_sent_at null)
@@ -783,7 +782,7 @@ The same `external_id` + `channel_source` cannot create two rows; duplicates ret
 
 **Outbound sends**
 
-Template replies are sent only by the scheduled reply worker (cron), which processes messages in Supabase that are ready to send. HTTP APIs do not trigger JMAP sends.
+Template replies are sent only by the scheduled reply worker (cron), which processes messages in Supabase that are ready to send. HTTP APIs do not trigger JMAP sends. Use `bin/cli send-replies` for local testing (same code path as cron).
 
 ## Related Projects
 
