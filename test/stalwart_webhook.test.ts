@@ -68,8 +68,9 @@ vi.mock("../src/database", () => ({
       insertMessage: vi.fn().mockResolvedValue(100),
       assignMessageToCluster: vi.fn().mockResolvedValue(1),
       getActiveTemplateForCampaign: vi.fn().mockResolvedValue(null),
-      getMessageForReplyScheduling: vi.fn().mockImplementation(
-        async (messageId: number) => ({
+      getMessageForReplyScheduling: vi
+        .fn()
+        .mockImplementation(async (messageId: number) => ({
           id: messageId,
           campaign_id: 5,
           politician_id: 1,
@@ -78,8 +79,7 @@ vi.mock("../src/database", () => ({
           duplicate_rank: 0,
           reply_sent_at: null,
           reply_scheduled_at: null,
-        }),
-      ),
+        })),
       upsertSupporter: vi.fn().mockResolvedValue(1),
       storeMessageContact: vi.fn().mockResolvedValue(undefined),
     };

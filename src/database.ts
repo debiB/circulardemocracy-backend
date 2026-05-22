@@ -227,7 +227,9 @@ export class DatabaseClient {
    * Mailbox addresses on {@link domain} used for multi-mailbox Stalwart ingestion
    * (active politicians + campaign technical addresses).
    */
-  async listStalwartMailboxAddressesForDomain(domain: string): Promise<string[]> {
+  async listStalwartMailboxAddressesForDomain(
+    domain: string,
+  ): Promise<string[]> {
     const d = domain.trim().toLowerCase().replace(/^@/, "");
     if (!d) {
       return [];
@@ -1266,7 +1268,10 @@ export class DatabaseClient {
       .eq("active", true);
 
     if (error) {
-      console.error("Error listing campaigns with active reply templates:", error);
+      console.error(
+        "Error listing campaigns with active reply templates:",
+        error,
+      );
       throw error;
     }
 
@@ -1410,16 +1415,18 @@ export class DatabaseClient {
     return data && data.length > 0 ? data[0] : null;
   }
 
-  async getMessagesReadyToSend(maxRetryAttempts: number): Promise<Array<{
-    id: number;
-    external_id: string;
-    politician_id: number;
-    campaign_id: number;
-    sender_hash: string;
-    reply_scheduled_at: string | null;
-    received_at: string;
-    reply_retry_count: number | null;
-  }>> {
+  async getMessagesReadyToSend(maxRetryAttempts: number): Promise<
+    Array<{
+      id: number;
+      external_id: string;
+      politician_id: number;
+      campaign_id: number;
+      sender_hash: string;
+      reply_scheduled_at: string | null;
+      received_at: string;
+      reply_retry_count: number | null;
+    }>
+  > {
     const campaignIds = await this.getCampaignIdsWithActiveReplyTemplate();
     if (campaignIds.length === 0) {
       return [];

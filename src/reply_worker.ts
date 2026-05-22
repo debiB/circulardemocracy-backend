@@ -327,25 +327,21 @@ async function processSingleMessage(
 
   const jmapClient = imp
     ? new JMAPClient({
-      apiUrl: jmapConfig.jmapApiUrl,
-      accountId: "",
-      basicUsername: buildStalwartImpersonationLogin(
-        imp.relayAccountEmail,
-        outboundIdentity.fromEmail,
-      ),
-      basicPassword: imp.relayAccountPassword,
-    })
+        apiUrl: jmapConfig.jmapApiUrl,
+        accountId: "",
+        basicUsername: buildStalwartImpersonationLogin(
+          imp.relayAccountEmail,
+          outboundIdentity.fromEmail,
+        ),
+        basicPassword: imp.relayAccountPassword,
+      })
     : new JMAPClient({
-      apiUrl: jmapConfig.jmapApiUrl,
-      accountId: jmapConfig.jmapAccountId,
-      bearerToken: jmapConfig.jmapBearerToken,
-    });
+        apiUrl: jmapConfig.jmapApiUrl,
+        accountId: jmapConfig.jmapAccountId,
+        bearerToken: jmapConfig.jmapBearerToken,
+      });
 
-  const sendContext = await buildSendContext(
-    db,
-    message,
-    outboundIdentity,
-  );
+  const sendContext = await buildSendContext(db, message, outboundIdentity);
 
   // 5. Render email content based on layout type
   const emailContent = renderEmailLayout({

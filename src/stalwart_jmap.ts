@@ -49,9 +49,7 @@ export function resolveRelayImpersonationCredentials(
   env: Record<string, string | undefined | null>,
 ): RelayImpersonationCredentials | null {
   const relayEmail = String(env.RELAY_SERVICE_ACCOUNT_EMAIL ?? "").trim();
-  const relayPassword = String(
-    env.RELAY_SERVICE_ACCOUNT_PASSWORD ?? "",
-  ).trim();
+  const relayPassword = String(env.RELAY_SERVICE_ACCOUNT_PASSWORD ?? "").trim();
   if (!relayEmail || !relayPassword) {
     return null;
   }
