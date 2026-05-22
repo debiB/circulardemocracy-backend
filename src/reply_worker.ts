@@ -12,12 +12,20 @@ import {
   jmapWellKnownSessionUrl,
   resolveMailAccountIdFromSession,
 } from "./jmap_client";
+import {
+  buildStalwartImpersonationLogin,
+  emailHostedOnDomain,
+  normalizeMailDomain,
+  resolveRelayImpersonationCredentials,
+  type StalwartImpersonationConfig,
+} from "./stalwart_jmap";
 import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
 
 export interface WorkerConfig {
   jmapApiUrl: string;
   jmapAccountId: string;
   jmapBearerToken: string;
+  stalwartImpersonation?: StalwartImpersonationConfig;
 }
 
 /** Worker / runtime bindings used for outbound JMAP + Supabase relay auth. */
@@ -28,6 +36,11 @@ export type MailSendBindings = {
   /** Supabase user (email) used for password-grant relay tokens to call JMAP as the service identity. */
   RELAY_SERVICE_ACCOUNT_EMAIL?: string;
   RELAY_SERVICE_ACCOUNT_PASSWORD?: string;
+  /**
+   * When set (e.g. from `ALL_DOMAIN` in `.env`), outbound mail uses Stalwart Basic-auth
+   * impersonation (`fromAddress%RELAY_SERVICE_ACCOUNT_EMAIL`) instead of the Supabase relay Bearer.
+   */
+  ALL_DOMAIN?: string;
 };
 
 function resolveStalwartJmapWorkerConfig(
@@ -40,6 +53,27 @@ function resolveStalwartJmapWorkerConfig(
   if (!jmapApiUrl) {
     return null;
   }
+
+  const allDomainRaw = (env.ALL_DOMAIN || "").trim();
+  if (allDomainRaw) {
+    const relay = resolveRelayImpersonationCredentials(
+      env as Record<string, string | undefined | null>,
+    );
+    if (!relay) {
+      return null;
+    }
+    return {
+      jmapApiUrl,
+      jmapAccountId: "",
+      jmapBearerToken: "",
+      stalwartImpersonation: {
+        allDomainLower: normalizeMailDomain(allDomainRaw),
+        relayAccountEmail: relay.relayEmail,
+        relayAccountPassword: relay.relayPassword,
+      },
+    };
+  }
+
   return {
     jmapApiUrl,
     jmapAccountId: "",
@@ -249,12 +283,6 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const jmapClient = new JMAPClient({
-    apiUrl: jmapConfig.jmapApiUrl,
-    accountId: jmapConfig.jmapAccountId,
-    bearerToken: jmapConfig.jmapBearerToken,
-  });
-
   // 3. Resolve recipient email from short-term contact storage
   const senderEmail = await db.getMessageContactEmail(message.id);
   if (!senderEmail) {
@@ -288,7 +316,36 @@ async function processSingleMessage(
     throw new Error(errorMsg);
   }
 
-  const sendContext = await buildSendContext(db, message, outboundIdentity);
+  const imp = jmapConfig.stalwartImpersonation;
+  if (imp) {
+    if (!emailHostedOnDomain(outboundIdentity.fromEmail, imp.allDomainLower)) {
+      const errorMsg = `ALL_DOMAIN is ${imp.allDomainLower} but outbound From is not on that domain`;
+      await handleSendFailure(db, message, errorMsg);
+      throw new Error(errorMsg);
+    }
+  }
+
+  const jmapClient = imp
+    ? new JMAPClient({
+      apiUrl: jmapConfig.jmapApiUrl,
+      accountId: "",
+      basicUsername: buildStalwartImpersonationLogin(
+        imp.relayAccountEmail,
+        outboundIdentity.fromEmail,
+      ),
+      basicPassword: imp.relayAccountPassword,
+    })
+    : new JMAPClient({
+      apiUrl: jmapConfig.jmapApiUrl,
+      accountId: jmapConfig.jmapAccountId,
+      bearerToken: jmapConfig.jmapBearerToken,
+    });
+
+  const sendContext = await buildSendContext(
+    db,
+    message,
+    outboundIdentity,
+  );
 
   // 5. Render email content based on layout type
   const emailContent = renderEmailLayout({
@@ -454,10 +511,21 @@ async function resolveSingleServiceAccountConfig(
   assertNoDynamicCredentialOverrides(mergedBindings as RuntimeSecretBindings);
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
+    const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
+      ? " For ALL_DOMAIN mode, set JMAP_URL plus RELAY_SERVICE_ACCOUNT_EMAIL and RELAY_SERVICE_ACCOUNT_PASSWORD."
+      : "";
     return {
       ok: false,
       reason:
-        "Single JMAP relay service account is not configured. Set JMAP_URL (base mail server URL).",
+        "Single JMAP relay service account is not configured. Set JMAP_URL (base mail server URL)." +
+        allDomainHint,
+    };
+  }
+
+  if (baseConfig.stalwartImpersonation) {
+    return {
+      ok: true,
+      config: baseConfig,
     };
   }
 

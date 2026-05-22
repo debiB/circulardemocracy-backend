@@ -172,9 +172,14 @@ ENVIRONMENT VARIABLES:
   SUPABASE_URL                    Required
   SUPABASE_KEY                    Required
   JMAP_URL                        Required (mail server base URL)
-  SUPABASE_ANON_KEY               Required (Supabase relay JWT for JMAP)
+  SUPABASE_ANON_KEY               Required when ALL_DOMAIN is unset (Supabase relay JWT)
   RELAY_SERVICE_ACCOUNT_EMAIL     Required
   RELAY_SERVICE_ACCOUNT_PASSWORD  Required
+
+Impersonation (Stalwart Basic auth, same as reply worker):
+  ALL_DOMAIN                      When set (e.g. example.org), sends via target%RELAY_SERVICE_ACCOUNT_EMAIL
+  RELAY_SERVICE_ACCOUNT_EMAIL     Impersonator account
+  RELAY_SERVICE_ACCOUNT_PASSWORD  Impersonator password
 
 EXAMPLES:
   send-replies
