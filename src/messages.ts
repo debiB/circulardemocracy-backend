@@ -11,10 +11,8 @@ import {
   PoliticianNotFoundError,
   processMessage,
 } from "./message_processor";
-import type { MailSendBindings } from "./reply_worker";
-
 // Define types for env and app
-interface Env extends MailSendBindings {
+interface Env {
   AI: Ai; // Cloudflare Workers AI
   SUPABASE_URL: string;
   SUPABASE_KEY: string;
@@ -88,6 +86,19 @@ const MessageResponseSchema = z.object({
   campaign_name: z.string().optional(),
   confidence: z.number().min(0).max(1).optional(),
   duplicate_rank: z.number().optional(),
+  reply_scheduled_at: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "When the cron reply worker may send (null means eligible on the next run for immediate/office-hours-now templates)",
+    ),
+  send_immediately: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether the active template timing allows send without a future reply_scheduled_at (does not trigger HTTP/JMAP send)",
+    ),
   errors: z.array(z.string()).optional(),
 });
 
