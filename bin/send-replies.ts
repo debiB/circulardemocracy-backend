@@ -18,6 +18,7 @@ export interface SendRepliesOptions {
   messageId?: number;
   campaignId?: number;
   campaignName?: string;
+  dryRun?: boolean;
 }
 
 export function parseArgs(args: string[]): SendRepliesOptions | null {
@@ -25,7 +26,8 @@ export function parseArgs(args: string[]): SendRepliesOptions | null {
     return null;
   }
 
-  const parsed: Record<string, string | number> = {};
+  const parsed: Record<string, string | number | boolean> = {};
+  const booleanFlags = new Set(["dry-run"]);
 
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
@@ -37,6 +39,11 @@ export function parseArgs(args: string[]): SendRepliesOptions | null {
     }
 
     const key = flag.substring(2);
+
+    if (booleanFlags.has(key)) {
+      parsed[key] = true;
+      continue;
+    }
 
     if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
       const value = args[i + 1];
@@ -84,6 +91,7 @@ export function parseArgs(args: string[]): SendRepliesOptions | null {
       typeof parsed["campaign-name"] === "string"
         ? parsed["campaign-name"]
         : undefined,
+    dryRun: parsed["dry-run"] === true,
   };
 }
 
@@ -152,6 +160,70 @@ async function processCampaignReplies(
   return result;
 }
 
+export async function previewReadyReplies(
+  db: DatabaseClient,
+  options: SendRepliesOptions,
+): Promise<void> {
+  if (options.messageId !== undefined) {
+    const message = await db.getMessageReadyToSendById(options.messageId);
+    if (message) {
+      console.log(
+        `DRY RUN: Message ${options.messageId} would be sent (campaign id ${message.campaign_id}).`,
+      );
+    } else {
+      console.log(
+        `DRY RUN: Message ${options.messageId} is not eligible for reply (not ready, already sent, or campaign has no active template).`,
+      );
+    }
+    return;
+  }
+
+  const allReady = await db.getMessagesReadyToSend(MAX_RETRY_ATTEMPTS);
+
+  if (options.campaignId !== undefined || options.campaignName) {
+    const campaignId = await resolveCampaignId(db, options);
+    const messages = allReady.filter((m) => m.campaign_id === campaignId);
+    const campaign = await db.getCampaignById(campaignId);
+    console.log("DRY RUN - No replies will be sent.\n");
+    console.log(
+      `${messages.length} reply(ies) would be sent for campaign: ${campaign?.name ?? campaignId} (id ${campaignId})`,
+    );
+    if (messages.length > 0) {
+      console.log(`Message IDs: ${messages.map((m) => m.id).join(", ")}`);
+    }
+    return;
+  }
+
+  const byCampaign = new Map<number, typeof allReady>();
+  for (const message of allReady) {
+    const list = byCampaign.get(message.campaign_id) ?? [];
+    list.push(message);
+    byCampaign.set(message.campaign_id, list);
+  }
+
+  console.log("DRY RUN - No replies will be sent.\n");
+  console.log("Replies that would be sent per campaign:\n");
+
+  if (byCampaign.size === 0) {
+    console.log("  (none)");
+    console.log("\nTotal: 0 message(s) ready to send");
+    return;
+  }
+
+  const campaignIds = [...byCampaign.keys()].sort((a, b) => a - b);
+  for (const campaignId of campaignIds) {
+    const messages = byCampaign.get(campaignId)!;
+    const campaign = await db.getCampaignById(campaignId);
+    console.log(
+      `  ${campaign?.name ?? campaignId} (id ${campaignId}): ${messages.length}`,
+    );
+  }
+
+  console.log(
+    `\nTotal: ${allReady.length} message(s) ready to send across ${byCampaign.size} campaign(s)`,
+  );
+}
+
 function printUsage() {
   console.log(`
 Send Replies - Test outbound auto-replies using the production reply worker
@@ -164,6 +236,7 @@ OPTIONS:
   --message-id <id>       Send reply for one message row (pending/scheduled, not yet sent)
   --campaign-id <id>      Send all ready replies for a campaign (numeric id)
   --campaign-name <hint>  Send all ready replies for a campaign (name/slug ilike match)
+  --dry-run               Preview what would be sent without sending mail
   -h, --help              Show this help message
 
 Without filters, processes all messages ready to send (same as the scheduled worker).
@@ -183,7 +256,10 @@ Impersonation (Stalwart Basic auth, same as reply worker):
 
 EXAMPLES:
   send-replies
+  send-replies --dry-run
+  send-replies --dry-run --campaign-id 5
   send-replies --message-id 42
+  send-replies --dry-run --message-id 42
   send-replies --campaign-id 5
   send-replies --campaign-name "Climate Action"
 `);
@@ -223,6 +299,11 @@ async function main(): Promise<void> {
   try {
     const db = new DatabaseClientImpl({ url: supabaseUrl, key: supabaseKey });
     const runtimeSecrets = process.env as Record<string, string | undefined>;
+
+    if (options.dryRun) {
+      await previewReadyReplies(db, options);
+      return;
+    }
 
     if (options.messageId !== undefined) {
       console.log(`Sending reply for message ${options.messageId}...`);

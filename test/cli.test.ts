@@ -637,6 +637,7 @@ describe("CLI Argument Parsing", () => {
         messageId: 42,
         campaignId: undefined,
         campaignName: undefined,
+        dryRun: false,
       });
     });
 
@@ -647,6 +648,18 @@ describe("CLI Argument Parsing", () => {
         messageId: undefined,
         campaignId: undefined,
         campaignName: undefined,
+        dryRun: false,
+      });
+    });
+
+    it("should parse --dry-run flag", async () => {
+      const { parseArgs } = await import("../bin/send-replies.js");
+      const result = parseArgs(["--dry-run"]);
+      expect(result).toEqual({
+        messageId: undefined,
+        campaignId: undefined,
+        campaignName: undefined,
+        dryRun: true,
       });
     });
 
@@ -662,6 +675,7 @@ describe("CLI Argument Parsing", () => {
         messageId: undefined,
         campaignId: 5,
         campaignName: undefined,
+        dryRun: false,
       });
     });
 
@@ -672,6 +686,7 @@ describe("CLI Argument Parsing", () => {
         messageId: undefined,
         campaignId: undefined,
         campaignName: "Climate",
+        dryRun: false,
       });
     });
 
