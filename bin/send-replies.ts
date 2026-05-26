@@ -15,7 +15,6 @@ dotenv();
 const MAX_RETRY_ATTEMPTS = 10;
 
 export interface SendRepliesOptions {
-  messageId?: number;
   campaignId?: number;
   campaignName?: string;
   dryRun?: boolean;
@@ -48,7 +47,7 @@ export function parseArgs(args: string[]): SendRepliesOptions | null {
     if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
       const value = args[i + 1];
 
-      if (key === "message-id" || key === "campaign-id") {
+      if (key === "campaign-id") {
         const numValue = parseInt(value, 10);
         if (Number.isNaN(numValue)) {
           console.error(`Invalid ${key} value: ${value}`);
@@ -81,8 +80,6 @@ export function parseArgs(args: string[]): SendRepliesOptions | null {
   }
 
   return {
-    messageId:
-      typeof parsed["message-id"] === "number" ? parsed["message-id"] : undefined,
     campaignId:
       typeof parsed["campaign-id"] === "number"
         ? parsed["campaign-id"]
@@ -164,20 +161,6 @@ export async function previewReadyReplies(
   db: DatabaseClient,
   options: SendRepliesOptions,
 ): Promise<void> {
-  if (options.messageId !== undefined) {
-    const message = await db.getMessageReadyToSendById(options.messageId);
-    if (message) {
-      console.log(
-        `DRY RUN: Message ${options.messageId} would be sent (campaign id ${message.campaign_id}).`,
-      );
-    } else {
-      console.log(
-        `DRY RUN: Message ${options.messageId} is not eligible for reply (not ready, already sent, or campaign has no active template).`,
-      );
-    }
-    return;
-  }
-
   const allReady = await db.getMessagesReadyToSend(MAX_RETRY_ATTEMPTS);
 
   if (options.campaignId !== undefined || options.campaignName) {
@@ -229,11 +212,10 @@ function printUsage() {
 Send Replies - Test outbound auto-replies using the production reply worker
 
 USAGE:
-  send-replies [--message-id <id>]
+  send-replies
   send-replies [--campaign-id <id> | --campaign-name <hint>]
 
 OPTIONS:
-  --message-id <id>       Send reply for one message row (pending/scheduled, not yet sent)
   --campaign-id <id>      Send all ready replies for a campaign (numeric id)
   --campaign-name <hint>  Send all ready replies for a campaign (name/slug ilike match)
   --dry-run               Preview what would be sent without sending mail
@@ -258,8 +240,6 @@ EXAMPLES:
   send-replies
   send-replies --dry-run
   send-replies --dry-run --campaign-id 5
-  send-replies --message-id 42
-  send-replies --dry-run --message-id 42
   send-replies --campaign-id 5
   send-replies --campaign-name "Climate Action"
 `);
@@ -288,27 +268,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (
-    options.messageId !== undefined &&
-    (options.campaignId !== undefined || options.campaignName !== undefined)
-  ) {
-    console.error("Use only one of --message-id or --campaign-id/--campaign-name");
-    process.exit(1);
-  }
-
   try {
     const db = new DatabaseClientImpl({ url: supabaseUrl, key: supabaseKey });
     const runtimeSecrets = process.env as Record<string, string | undefined>;
 
     if (options.dryRun) {
       await previewReadyReplies(db, options);
-      return;
-    }
-
-    if (options.messageId !== undefined) {
-      console.log(`Sending reply for message ${options.messageId}...`);
-      await processReplyImmediately(db, options.messageId, runtimeSecrets);
-      console.log(`Reply sent for message ${options.messageId}.`);
       return;
     }
 

@@ -318,9 +318,6 @@ npx tsx bin/cli send-replies
 # Preview counts per campaign without sending
 npx tsx bin/cli send-replies --dry-run
 
-# Send one message by database id
-npx tsx bin/cli send-replies --message-id 42
-
 # All ready replies for a campaign (by id or name hint)
 npx tsx bin/cli send-replies --campaign-id 5
 npx tsx bin/cli send-replies --campaign-name "Climate Action"
