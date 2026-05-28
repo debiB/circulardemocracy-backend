@@ -321,6 +321,56 @@ async function addCampaign() {
   }
 }
 
+async function addPolitician() {
+  const { email, name, country, region, level, position, party } = argv;
+
+  if (!email || !name) {
+    console.error('Error: --email and --name are required');
+    console.log('\nUsage: ./cli add-politician --email <email> --name <name> [--country <ISO2>] [--region <region>] [--level <level>] [--position <position>] [--party <party>]');
+    process.exit(1);
+  }
+
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_KEY;
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Error: SUPABASE_URL and SUPABASE_KEY environment variables must be set');
+      process.exit(1);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const insertData = {
+      email,
+      name,
+      active: true,
+      country: country || null,
+      region: region || null,
+      level: level || null,
+      position: position || null,
+      party: party || null,
+    };
+
+    console.log(`💾 Creating politician: ${name} <${email}>`);
+    const { data: createdPolitician, error: createError } = await supabase
+      .from('politicians')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (createError) {
+      console.error(`❌ Error creating politician: ${createError.message}`);
+      process.exit(1);
+    }
+
+    console.log('✅ Politician created successfully!');
+    console.log(JSON.stringify(createdPolitician, null, 2));
+  } catch (error) {
+    console.error('❌ Failed to create politician:', error.message);
+    process.exit(1);
+  }
+}
+
 async function updateCampaign() {
   let { id, text, name, url } = argv;
 
@@ -976,6 +1026,7 @@ Usage: ./cli <command> [options]
 Commands:
   login                 Authenticate with the API
   logout                Clear authentication session
+  add-politician        Create a new politician
   add-campaign          Create a new campaign (text optional)
   update-campaign       Update campaign embedding
   create-campaign-from-cluster  Assign cluster to campaign (match, merge, or create + messages)
@@ -988,6 +1039,9 @@ Outbound JMAP (reply worker): set JMAP_URL to the mail server base URL; session 
 JMAP_URL + "/.well-known/jmap". The mail account id is read from the session response, not from CLI flags.
 
 Campaign Management:
+  add-politician --email <email> --name <name> [--country <ISO2>] [--region <region>] [--level <level>] [--position <position>] [--party <party>]
+    Create politician directly in Supabase with active=true
+
   add-campaign --name <name> [--text <text>] [--description <desc>]
     Create campaign directly in Supabase (slug auto-generated from name)
     If --text is provided, generate and store reference_vector; otherwise create without it
@@ -1045,6 +1099,7 @@ API Options:
 
 Examples:
   ./cli login
+  ./cli add-politician --email "mayor@example.gov" --name "Alex Johnson" --country "US" --region "CA-12" --level "local" --position "Mayor" --party "Independent"
   ./cli add-campaign --name "Climate Action" --text "I urge action on climate change"
   ./cli add-campaign --url "https://climate.example.com/action"
   ./cli update-campaign --id 5 --text "Updated representative text"
@@ -1126,6 +1181,11 @@ if (command === 'logout') {
 
 if (command === 'add-campaign') {
   await addCampaign();
+  process.exit(0);
+}
+
+if (command === 'add-politician') {
+  await addPolitician();
   process.exit(0);
 }
 

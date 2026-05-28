@@ -217,7 +217,7 @@ All CLI entrypoints load `.env` via `dotenv`, so set these once and reuse across
 export SUPABASE_URL="your-supabase-url"
 
 # Service key (or any key your Supabase project allows for these operations):
-# Used by add-campaign (insert), create-campaign-from-cluster, closest-campaigns
+# Used by add-politician, add-campaign (insert), create-campaign-from-cluster, closest-campaigns
 # (same pattern as DatabaseClient in code).
 export SUPABASE_KEY="your-supabase-service-or-backend-key"
 
@@ -259,6 +259,14 @@ npx tsx bin/cli <command> [options]
 - `login`: Authenticate with the API
 - `logout`: Clear authentication session
 
+**Politician Management:**
+
+- `add-politician`: Insert a new row into `politicians` via Supabase with `active = true`
+
+**Required arguments:** `--email`, `--name`
+
+**Optional arguments:** `--country` (ISO 2-letter code), `--region`, `--level` (e.g. `national`, `regional`, `local`, `european`), `--position` (e.g. `MP`, `MEP`, `Mayor`), `--party`
+
 **Campaign Management:**
 
 - `add-campaign`: Insert a new row into `campaigns` via Supabase (`--text` optional; with `--text`, stores `reference_vector`)
@@ -280,6 +288,23 @@ npx tsx bin/cli <command> [options]
 - `reprocess-messages`: Recompute embeddings/classification for already stored messages
 - `send-replies`: Send pending/scheduled auto-replies via the production reply worker (for testing JMAP send / impersonation)
 - `<endpoint>`: Direct API endpoint access (e.g., campaigns, users/:id)
+
+**Politician Management Examples:**
+
+```bash
+# Create politician directly in Supabase (active=true by default)
+npx tsx bin/cli add-politician --email "mayor@example.gov" --name "Alex Johnson"
+
+# With optional metadata
+npx tsx bin/cli add-politician \
+  --email "mayor@example.gov" \
+  --name "Alex Johnson" \
+  --country "US" \
+  --region "CA-12" \
+  --level "local" \
+  --position "Mayor" \
+  --party "Independent"
+```
 
 **Campaign Management Examples:**
 
