@@ -9,6 +9,10 @@ import {
   generateEmbedding,
 } from "./embedding_service";
 import type { Ai } from "./message_processor";
+import {
+  ensureHookCampaignFoldersVisible,
+  type HookFolderVisibilityBindings,
+} from "./jmap_mailbox";
 
 // =============================================================================
 // SENDER FLAG TYPE
@@ -17,7 +21,7 @@ import type { Ai } from "./message_processor";
 type SenderFlag = "normal" | "replyToDiffers" | "suspicious";
 
 // Environment variables interface
-interface Env {
+interface Env extends HookFolderVisibilityBindings {
   AI: Ai;
   SUPABASE_URL: string;
   SUPABASE_KEY: string;
@@ -239,9 +243,9 @@ app.openapi(mtaHookRoute, async (c) => {
     }
 
     // Process each recipient with the shared campaign classification
-    const results = await Promise.all(
+    const recipientResults = await Promise.all(
       hookData.recipients.map(async (recipientEmail: string) => {
-        return await processEmailForRecipient(
+        const result = await processEmailForRecipient(
           db,
           c.env.AI,
           hookData,
@@ -250,10 +254,11 @@ app.openapi(mtaHookRoute, async (c) => {
           recipientEmail,
           sharedCampaignClassification,
         );
+        return { recipientEmail, result };
       }),
     );
 
-    if (results.length === 0) {
+    if (recipientResults.length === 0) {
       const emptyRes: StalwartResponse = {
         action: "accept",
         confidence: 0,
@@ -262,10 +267,29 @@ app.openapi(mtaHookRoute, async (c) => {
       return c.json(emptyRes, 200);
     }
 
+    const folderSubscriptions = recipientResults
+      .map(({ recipientEmail, result }) => ({
+        mailboxEmail: recipientEmail,
+        folderName: result.modifications?.folder ?? "",
+      }))
+      .filter((entry) => entry.folderName.length > 0);
+
+    const subscribeFolders = () =>
+      ensureHookCampaignFoldersVisible(c.env, folderSubscriptions);
+
+    try {
+      c.executionCtx.waitUntil(subscribeFolders());
+    } catch {
+      void subscribeFolders();
+    }
+
     // Use the result with highest confidence (they should all have same folder now)
-    const bestResult: StalwartResponse = results.reduce((best, current) =>
-      (current.confidence || 0) > (best.confidence || 0) ? current : best,
-    );
+    const bestResult: StalwartResponse = recipientResults.reduce(
+      (best, current) =>
+        (current.result.confidence || 0) > (best.result.confidence || 0)
+          ? current
+          : best,
+    ).result;
 
     console.log(
       `Email processed: campaign=${bestResult.modifications?.headers?.["X-CircularDemocracy-Campaign"]}, confidence=${bestResult.confidence}`,

@@ -203,7 +203,7 @@ All HTTP routes are under `/api/v1/…` and documented in [`doc/openapi.json`](d
 
 ### Stalwart webhook
 
-The separate Stalwart MTA hook worker (`src/stalwart.ts`) ingests inbound mail with automatic folder organization by campaign. It uses the same message processing pipeline as the REST API.
+The separate Stalwart MTA hook worker (`src/stalwart.ts`) ingests inbound mail with automatic folder organization by campaign. It uses the same message processing pipeline as the REST API. After routing, the worker subscribes each assigned folder via JMAP (`isSubscribed: true`) so campaign folders appear in Twake Mail; this requires `JMAP_URL` plus `ALL_DOMAIN` impersonation (`RELAY_SERVICE_ACCOUNT_*`) on the worker, same as outbound send.
 
 ### CLI Tools
 

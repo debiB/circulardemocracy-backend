@@ -7,6 +7,7 @@ import { z } from "zod";
 import Turndown from "turndown";
 import { config as dotenv } from "dotenv";
 import { jmapWellKnownSessionUrl } from "../src/jmap_client.js";
+import { ensureMailboxExists } from "../src/jmap_mailbox.js";
 
 // Load `.env` once; read config from `process.env` only (no env.ts wrapper).
 dotenv();
@@ -200,68 +201,6 @@ function generateFolderPath(campaignName: string | null): string {
     .substring(0, 50);
 
   return campaignFolder;
-}
-
-async function ensureMailboxExists(
-  apiUrl: string,
-  authHeader: string,
-  accountId: string,
-  folderName: string,
-): Promise<string> {
-  // Check if mailbox already exists
-  const queryResponses = await jmapCall(apiUrl, authHeader, [
-    [
-      "Mailbox/query",
-      {
-        accountId,
-        filter: {
-          name: folderName,
-        },
-      },
-      "queryMailbox",
-    ],
-    [
-      "Mailbox/get",
-      {
-        accountId,
-        "#ids": {
-          resultOf: "queryMailbox",
-          name: "Mailbox/query",
-          path: "/ids",
-        },
-      },
-      "getMailbox",
-    ],
-  ]);
-
-  const getData = getMethodResponse(queryResponses, "Mailbox/get", "getMailbox");
-
-  if (Array.isArray(getData.list) && getData.list.length > 0) {
-    return getData.list[0].id;
-  }
-
-  // Create new mailbox if it doesn't exist
-  const createResponses = await jmapCall(apiUrl, authHeader, [
-    [
-      "Mailbox/set",
-      {
-        accountId,
-        create: {
-          newMailbox: {
-            name: folderName,
-          },
-        },
-      },
-      "createMailbox",
-    ],
-  ]);
-
-  const setData = getMethodResponse(createResponses, "Mailbox/set", "createMailbox");
-  if (setData.created?.newMailbox?.id) {
-    return setData.created.newMailbox.id;
-  } else {
-    throw new Error(`Failed to create mailbox: ${folderName}`);
-  }
 }
 
 async function moveEmailToMailbox(

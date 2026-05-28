@@ -5,6 +5,7 @@ import {
   jmapWellKnownSessionUrl,
   resolveMailAccountIdFromSession,
 } from "../src/jmap_client.js";
+import { ensureMailboxExists } from "../src/jmap_mailbox.js";
 import { processMessage, PoliticianNotFoundError, type Ai, type MessageInput } from "../src/message_processor.js";
 import {
   buildStalwartImpersonationLogin,
@@ -448,61 +449,6 @@ function generateFolderPath(campaignName?: string | null): string {
     .replace(/[^a-zA-Z0-9\-_\s]/g, "")
     .replace(/\s+/g, "-")
     .substring(0, 50) || "Unclassified";
-}
-
-async function ensureMailboxExists(
-  apiUrl: string,
-  authHeader: string,
-  accountId: string,
-  folderName: string,
-): Promise<string> {
-  const queryResponses = await jmapCall(apiUrl, authHeader, [
-    [
-      "Mailbox/query",
-      {
-        accountId,
-        filter: { name: folderName },
-      },
-      "queryMailbox",
-    ],
-    [
-      "Mailbox/get",
-      {
-        accountId,
-        "#ids": {
-          resultOf: "queryMailbox",
-          name: "Mailbox/query",
-          path: "/ids",
-        },
-      },
-      "getMailbox",
-    ],
-  ]);
-
-  const getData = getMethodResponse(queryResponses, "Mailbox/get", "getMailbox");
-  if (Array.isArray(getData.list) && getData.list.length > 0) {
-    return getData.list[0].id;
-  }
-
-  const createResponses = await jmapCall(apiUrl, authHeader, [
-    [
-      "Mailbox/set",
-      {
-        accountId,
-        create: {
-          newMailbox: { name: folderName },
-        },
-      },
-      "createMailbox",
-    ],
-  ]);
-
-  const setData = getMethodResponse(createResponses, "Mailbox/set", "createMailbox");
-  if (setData.created?.newMailbox?.id) {
-    return setData.created.newMailbox.id;
-  }
-
-  throw new Error(`Failed to create mailbox: ${folderName}`);
 }
 
 async function moveEmailToMailbox(
