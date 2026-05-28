@@ -27,6 +27,9 @@ JMAP_URL=https://mail.example.org
 SUPABASE_ANON_KEY=your-supabase-anon-key
 RELAY_SERVICE_ACCOUNT_EMAIL=relay-user@example.org
 RELAY_SERVICE_ACCOUNT_PASSWORD=relay-user-password
+
+# Optional: Stalwart impersonation for outbound sends (see README)
+ALL_DOMAIN=example.org
 ```
 
 ### 2. Database Migration Setup
@@ -55,6 +58,7 @@ Outbound replies use one global service account for authentication:
 - `SUPABASE_ANON_KEY`
 - `RELAY_SERVICE_ACCOUNT_EMAIL`
 - `RELAY_SERVICE_ACCOUNT_PASSWORD`
+- `ALL_DOMAIN` (optional) — Stalwart impersonation domain; when unset, `SUPABASE_ANON_KEY` is required for relay JWT
 
 ### Optional Variables
 
@@ -64,7 +68,10 @@ Set `JMAP_URL`, `RELAY_SERVICE_ACCOUNT_EMAIL`, and `RELAY_SERVICE_ACCOUNT_PASSWO
 
 ### Reply sends (brief)
 
+
+- Production sends run on the Cloudflare cron reply worker; locally use `npx tsx bin/cli send-replies`.
 - Each `messages` row is sent at most once by the worker: after success, `reply_sent_at` is set.
+
 - Inbound auto-replies are only scheduled for the first message per supporter + campaign (`duplicate_rank === 0`); see README “Reply deduplication and persistence” for full detail.
 
 ## Production Deployment
@@ -102,6 +109,9 @@ npm run mail -- --help
 
 # JMAP email ingestion from Stalwart
 npm run jmap-fetch -- --help
+
+# Test outbound auto-replies (same path as cron; not an HTTP API)
+npx tsx bin/cli send-replies --help
 ```
 
 ## API Key Setup

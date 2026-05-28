@@ -8,8 +8,8 @@ import { isReadyToSend } from "./scheduling";
 import { renderEmailLayout } from "./email_layout";
 import {
   type EmailMessage,
-  jmapWellKnownSessionUrl,
   JMAPClient,
+  jmapWellKnownSessionUrl,
   resolveMailAccountIdFromSession,
 } from "./jmap_client";
 import {
@@ -327,25 +327,21 @@ async function processSingleMessage(
 
   const jmapClient = imp
     ? new JMAPClient({
-      apiUrl: jmapConfig.jmapApiUrl,
-      accountId: "",
-      basicUsername: buildStalwartImpersonationLogin(
-        imp.relayAccountEmail,
-        outboundIdentity.fromEmail,
-      ),
-      basicPassword: imp.relayAccountPassword,
-    })
+        apiUrl: jmapConfig.jmapApiUrl,
+        accountId: "",
+        basicUsername: buildStalwartImpersonationLogin(
+          imp.relayAccountEmail,
+          outboundIdentity.fromEmail,
+        ),
+        basicPassword: imp.relayAccountPassword,
+      })
     : new JMAPClient({
-      apiUrl: jmapConfig.jmapApiUrl,
-      accountId: jmapConfig.jmapAccountId,
-      bearerToken: jmapConfig.jmapBearerToken,
-    });
+        apiUrl: jmapConfig.jmapApiUrl,
+        accountId: jmapConfig.jmapAccountId,
+        bearerToken: jmapConfig.jmapBearerToken,
+      });
 
-  const sendContext = await buildSendContext(
-    db,
-    message,
-    outboundIdentity,
-  );
+  const sendContext = await buildSendContext(db, message, outboundIdentity);
 
   // 5. Render email content based on layout type
   const emailContent = renderEmailLayout({
@@ -441,7 +437,11 @@ async function handleSendFailure(
 async function buildSendContext(
   db: DatabaseClient,
   message: MessageToProcess,
-  _identity: { fromEmail: string; replyToEmail: string; fromDisplayName: string },
+  _identity: {
+    fromEmail: string;
+    replyToEmail: string;
+    fromDisplayName: string;
+  },
 ): Promise<SendContext> {
   const supporterId = await db.upsertSupporter(
     message.campaign_id,
@@ -504,9 +504,7 @@ async function resolveSingleServiceAccountConfig(
     ...(processEnv || {}),
     ...(runtimeSecrets || {}),
   };
-  assertNoDynamicCredentialOverrides(
-    mergedBindings as RuntimeSecretBindings,
-  );
+  assertNoDynamicCredentialOverrides(mergedBindings as RuntimeSecretBindings);
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
     const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
@@ -537,6 +535,7 @@ async function resolveSingleServiceAccountConfig(
         "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, RELAY_SERVICE_ACCOUNT_EMAIL, and RELAY_SERVICE_ACCOUNT_PASSWORD.",
     };
   }
+
   const config: WorkerConfig = {
     ...baseConfig,
     jmapAccountId: await fetchAndResolveMailAccountIdFromSession(
@@ -589,4 +588,3 @@ function sanitizeErrorMessage(raw: string): string {
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
     .slice(0, 500);
 }
-

@@ -25,7 +25,7 @@ vi.mock("../src/database", () => ({
 }));
 
 describe("Auth role and scope enforcement", () => {
-  let app: (typeof import("../src/api"))["default"];
+  let app: typeof import("../src/api")["default"];
 
   const env = {
     AI: { run: vi.fn() },
@@ -112,5 +112,4 @@ describe("Auth role and scope enforcement", () => {
       expect.stringContaining("/politicians?id=in.(1)&select="),
     );
   });
-
 });

@@ -7,8 +7,7 @@
  * - jmap_client.buildEmailObject: on send (covers legacy rows)
  */
 
-const ENCODED_WORD_RE =
-  /=\?([\w*-]+)\?([BbQq])\?((?:[^?]|\?(?!=))*)\?=/g;
+const ENCODED_WORD_RE = /=\?([\w*-]+)\?([BbQq])\?((?:[^?]|\?(?!=))*)\?=/g;
 
 function decodeQuotedPrintableWord(encoded: string): string {
   const bytes: number[] = [];

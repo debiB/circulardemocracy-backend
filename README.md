@@ -42,8 +42,9 @@ For performance reasons, it should be noted that it's quite common that the same
 
 ### 💌 Automated Response System
 
-- **Template Management**: Politicians can create custom reply templates for different campaigns
-- **Scheduled Responses**: Flexible timing options (immediate, office hours, before votes)
+- **Template Management**: Politicians can create custom reply templates for different campaigns (API + dashboard)
+- **Scheduled Responses**: Template timing (`immediate`, `office_hours`, `scheduled`) sets `reply_scheduled_at`; the cron reply worker sends when due
+- **No HTTP send triggers**: Ingest APIs schedule replies only; JMAP send runs on Cloudflare cron or `bin/cli send-replies` for testing
 - **Personalization**: Support for headers, contact details, and politician branding
 - **Delivery Tracking**: Each send is recorded in `reply_send_logs`; successful sends set `messages.reply_sent_at` so the worker does not pick the same message again
 - **Inbound auto-reply once per supporter/campaign**: Only the first classified message for a given sender hash + politician + campaign (`duplicate_rank === 0`) is scheduled for an automatic template reply; later messages from the same supporter in that campaign are not auto-replied by this path
@@ -182,29 +183,27 @@ Update the documentation whenever you:
 
 ## API Endpoints
 
-### REST API Input Channel
+All HTTP routes are under `/api/v1/…` and documented in [`doc/openapi.json`](doc/openapi.json) (interactive UI at `/doc` when the dev server is running).
 
-```
-POST /api/messages
-```
+| Area | Methods | Path |
+|------|---------|------|
+| System | `GET` | `/health` |
+| Auth | `POST` | `/api/v1/login` |
+| Messages | `POST` | `/api/v1/messages` |
+| Analytics | `GET` | `/api/v1/messages/analytics` |
+| Campaigns | `GET`, `POST` | `/api/v1/campaigns`, `/api/v1/campaigns/stats`, `/api/v1/campaigns/{id}` |
+| Politicians | `GET` | `/api/v1/politicians`, `/api/v1/politicians/{id}` |
+| Reply templates | `GET`, `POST`, `PUT`, `DELETE` | `/api/v1/reply-templates`, `/api/v1/reply-templates/{id}`, `/api/v1/reply-templates/{id}/toggle-active` |
 
-**Request Body:**
 
-```json
-{
-  "messageid": "uuid-string",
-  "sender_name": "string",
-  "sender_email": "string",
-  "subject": "string",
-  "message": "string",
-  "timestamp": "ISO-8601",
-  "campaign_name": "string (optional)"
-}
-```
 
-### Stalwart Webhook
+### REST message ingest
 
-Integration with mail server MTA hooks for direct email processing with automatic folder organization by campaign.
+`POST /api/v1/messages` (Bearer JWT) accepts `external_id`, `sender_name`, `sender_email`, `recipient_email`, `subject`, `message`, `timestamp`, and optional `channel_source` / `campaign_hint`. The response may include `reply_scheduled_at` and `send_immediately` describing **when the cron worker may send** — not an on-request JMAP send.
+
+### Stalwart webhook
+
+The separate Stalwart MTA hook worker (`src/stalwart.ts`) ingests inbound mail with automatic folder organization by campaign. It uses the same message processing pipeline as the REST API.
 
 ### CLI Tools
 
@@ -233,6 +232,10 @@ export JMAP_URL="https://mail.example.org"
 # Supabase relay identity (password grant) used by the reply worker to obtain a JWT for JMAP send
 export RELAY_SERVICE_ACCOUNT_EMAIL="relay-service@yourdomain.com"
 export RELAY_SERVICE_ACCOUNT_PASSWORD="relay-user-password"
+
+# Optional: when set (e.g. example.org), outbound sends use Stalwart impersonation
+# (fromAddress%RELAY_SERVICE_ACCOUNT_EMAIL) instead of the Supabase relay JWT
+export ALL_DOMAIN="example.org"
 
 # For JMAP CLIs only (`jmap-fetch`, `reprocess-messages`): mailbox basic auth
 export JMAP_SERVICE_ACCOUNT_EMAIL="mailbox@yourdomain.com"
@@ -655,6 +658,8 @@ This API is designed to be deployed as a Cloudflare Worker. The `wrangler` CLI, 
     npx wrangler secret put SUPABASE_ANON_KEY
     npx wrangler secret put RELAY_SERVICE_ACCOUNT_EMAIL
     npx wrangler secret put RELAY_SERVICE_ACCOUNT_PASSWORD
+    # Optional, for Stalwart impersonation instead of relay JWT:
+    npx wrangler secret put ALL_DOMAIN
     ```
 
 3.  **Deploy the Worker**
@@ -700,11 +705,12 @@ The platform is designed with privacy-by-design principles:
 Reply sending uses one service account for JMAP authentication across all politicians:
 
 - `JMAP_URL` (base mail server; session URL is `JMAP_URL` + `/.well-known/jmap`)
-- `SUPABASE_ANON_KEY`
 - `RELAY_SERVICE_ACCOUNT_EMAIL`
 - `RELAY_SERVICE_ACCOUNT_PASSWORD`
+- `SUPABASE_ANON_KEY` — required when `ALL_DOMAIN` is unset (Supabase relay JWT for JMAP)
+- `ALL_DOMAIN` (optional) — when set, sends use Stalwart Basic-auth impersonation (`target%RELAY_SERVICE_ACCOUNT_EMAIL`) instead of the relay JWT
 
-At runtime, the reply worker resolves these values from Worker bindings (`c.env`) and local `.env` (`process.env`) for development.
+At runtime, the reply worker and `bin/send-replies` resolve these from Worker bindings (`c.env`) or `.env` (`process.env`) in development. The cron schedule is configured in `wrangler.toml` (every 5 minutes).
 
 ## Stalwart Master Account Setup (Supabase IdP)
 
@@ -780,6 +786,10 @@ In `processMessage()`, an active template reply is only scheduled when `duplicat
 **Duplicate ingest**
 
 The same `external_id` + `channel_source` cannot create two rows; duplicates return early and never get a second reply pipeline for that ingest id.
+
+**Outbound sends**
+
+Template replies are sent only by the scheduled reply worker (cron), which processes messages in Supabase that are ready to send. HTTP APIs do not trigger JMAP sends. Use `bin/cli send-replies` for local testing (same code path as cron).
 
 ## Related Projects
 

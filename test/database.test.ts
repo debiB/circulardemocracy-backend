@@ -278,9 +278,8 @@ describe("DatabaseClient", () => {
         ]),
       );
 
-      const result = await db.listStalwartMailboxAddressesForDomain(
-        "@Example.ORG",
-      );
+      const result =
+        await db.listStalwartMailboxAddressesForDomain("@Example.ORG");
 
       expect(result).toEqual(["campaign@example.org", "rep@example.org"]);
       const url = mockFetch.mock.calls[0][0] as string;

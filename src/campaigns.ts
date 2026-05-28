@@ -1,9 +1,5 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import {
-  authMiddleware,
-  type AuthContext,
-  requireAppRole,
-} from "./auth";
+import { authMiddleware, type AuthContext, requireAppRole } from "./auth";
 import type { DatabaseClient } from "./database";
 
 // Define types for env and app

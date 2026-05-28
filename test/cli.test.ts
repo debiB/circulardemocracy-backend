@@ -15,7 +15,7 @@ describe("CLI Argument Parsing", () => {
 
   beforeEach(() => {
     originalArgv = process.argv;
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     processExitSpy = vi
       .spyOn(process, "exit")
       .mockImplementation((code?: any) => {

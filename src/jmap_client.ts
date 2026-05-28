@@ -10,7 +10,9 @@ import { encodeBasicAuth } from "./stalwart_jmap";
 export function jmapWellKnownSessionUrl(
   env: Record<string, string | undefined | null>,
 ): string | null {
-  const base = String(env.JMAP_URL ?? "").trim().replace(/\/+$/, "");
+  const base = String(env.JMAP_URL ?? "")
+    .trim()
+    .replace(/\/+$/, "");
   if (!base) {
     return null;
   }
@@ -298,7 +300,10 @@ export class JMAPClient {
       const authHeader = this.authHeader();
       const apiUrl = await this.resolvePostApiUrl();
       const sentMailboxId = await this.resolveSentMailboxId(apiUrl, authHeader);
-      const identityId = await this.resolveServiceIdentityId(apiUrl, authHeader);
+      const identityId = await this.resolveServiceIdentityId(
+        apiUrl,
+        authHeader,
+      );
 
       const emailObject = this.buildEmailObject(email, sentMailboxId);
 

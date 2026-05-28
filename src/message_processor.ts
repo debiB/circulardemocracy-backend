@@ -50,8 +50,6 @@ export interface MessageProcessingResult {
   errors?: string[];
 }
 
-export type ImmediateReplyHandler = (messageId: number) => Promise<void>;
-
 /**
  * Applies send timing from the campaign's active template when the message is eligible:
  * campaign assigned, duplicate_rank 0, not yet sent. Returns null when no auto-reply applies.
@@ -97,7 +95,6 @@ export async function processMessage(
   db: DatabaseClient,
   ai: Ai,
   data: MessageInput,
-  immediateReplyHandler?: ImmediateReplyHandler,
 ): Promise<MessageProcessingResult> {
   const politician = await db.findPoliticianByEmail(data.recipient_email);
   if (!politician) {
@@ -201,14 +198,6 @@ export async function processMessage(
     duplicateRank === 0 && classification.campaign_id !== null
       ? await applyReplyScheduleForMessage(db, messageId)
       : null;
-
-  if (replySchedule?.send_immediately && immediateReplyHandler) {
-    try {
-      await immediateReplyHandler(messageId);
-    } catch (_error) {
-      console.error("Immediate reply send failed");
-    }
-  }
 
   return {
     success: true,

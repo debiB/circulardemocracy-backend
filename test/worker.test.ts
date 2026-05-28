@@ -73,9 +73,9 @@ describe("Reply Worker", () => {
       }
       return new Response("not mocked", { status: 500 });
     });
-    vi.spyOn(mockDb, "getCampaignIdsWithActiveReplyTemplate").mockResolvedValue([
-      1,
-    ]);
+    vi.spyOn(mockDb, "getCampaignIdsWithActiveReplyTemplate").mockResolvedValue(
+      [1],
+    );
     vi.spyOn(mockDb, "updateMessageFields").mockResolvedValue(undefined);
     vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([]);
     vi.spyOn(mockDb, "getMessageForReplyScheduling").mockImplementation(
@@ -436,7 +436,9 @@ describe("Reply Worker", () => {
         insert: mockInsert,
       });
 
-      vi.spyOn(mockDb, "markMessageReplyDelivered").mockResolvedValue(undefined);
+      vi.spyOn(mockDb, "markMessageReplyDelivered").mockResolvedValue(
+        undefined,
+      );
 
       expect(mockFrom).toBeDefined();
       expect(mockInsert).toBeDefined();
@@ -450,7 +452,9 @@ describe("Reply Worker", () => {
         eq: mockEq,
       });
 
-      vi.spyOn(mockDb, "markMessageReplyDelivered").mockResolvedValue(undefined);
+      vi.spyOn(mockDb, "markMessageReplyDelivered").mockResolvedValue(
+        undefined,
+      );
 
       expect(mockUpdate).toBeDefined();
       expect(mockEq).toBeDefined();
@@ -523,7 +527,9 @@ describe("Reply Worker", () => {
         }),
       };
 
-      vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([mockMessage]);
+      vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([
+        mockMessage,
+      ]);
       vi.spyOn(mockDb, "getCampaignById").mockResolvedValue({
         id: 1,
         name: "Campaign One",
@@ -535,7 +541,9 @@ describe("Reply Worker", () => {
         name: "Jane Doe",
         email: "jane@pol.com",
       });
-      vi.spyOn(mockDb, "markMessageReplyDelivered").mockResolvedValue(undefined);
+      vi.spyOn(mockDb, "markMessageReplyDelivered").mockResolvedValue(
+        undefined,
+      );
 
       vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue({
         id: 1,
@@ -619,7 +627,9 @@ describe("Reply Worker", () => {
         }),
       };
 
-      vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([mockMessage]);
+      vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([
+        mockMessage,
+      ]);
       vi.spyOn(mockDb, "getCampaignById").mockResolvedValue({
         id: 1,
         name: "Campaign One",
@@ -725,7 +735,9 @@ describe("Reply Worker", () => {
           return {} as any;
         },
       );
-      vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([mockMessage]);
+      vi.spyOn(mockDb, "getMessagesReadyToSend").mockResolvedValue([
+        mockMessage,
+      ]);
       vi.spyOn(mockDb, "getCampaignById").mockResolvedValue({
         id: 1,
         name: "Campaign One",

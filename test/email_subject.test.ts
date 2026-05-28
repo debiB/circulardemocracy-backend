@@ -13,14 +13,13 @@ describe("normalizeEmailSubject", () => {
   });
 
   it("decodes us-ascii Q encoded-words and trims", () => {
-    expect(
-      normalizeEmailSubject("=?us-ascii?Q?thank_you_for_sending_?="),
-    ).toBe("thank you for sending");
+    expect(normalizeEmailSubject("=?us-ascii?Q?thank_you_for_sending_?=")).toBe(
+      "thank you for sending",
+    );
   });
 
   it("decodes folded encoded-words", () => {
-    const folded =
-      "=?us-ascii?Q?thank_?=\r\n =?us-ascii?Q?you_?=";
+    const folded = "=?us-ascii?Q?thank_?=\r\n =?us-ascii?Q?you_?=";
     expect(normalizeEmailSubject(folded)).toBe("thank you");
   });
 

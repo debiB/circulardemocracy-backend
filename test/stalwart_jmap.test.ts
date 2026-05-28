@@ -18,10 +18,7 @@ describe("encodeBasicAuth", () => {
 describe("buildStalwartImpersonationLogin", () => {
   it("joins target and relay with %", () => {
     expect(
-      buildStalwartImpersonationLogin(
-        "relay@example.com",
-        "user@example.com",
-      ),
+      buildStalwartImpersonationLogin("relay@example.com", "user@example.com"),
     ).toBe("user@example.com%relay@example.com");
   });
 });
@@ -50,9 +47,7 @@ describe("normalizeMailDomain / emailHostedOnDomain", () => {
   });
 
   it("detects hosted email", () => {
-    expect(
-      emailHostedOnDomain("Rep@Example.ORG", "example.org"),
-    ).toBe(true);
+    expect(emailHostedOnDomain("Rep@Example.ORG", "example.org")).toBe(true);
     expect(emailHostedOnDomain("x@other.org", "example.org")).toBe(false);
   });
 });
