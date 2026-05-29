@@ -218,6 +218,12 @@ async function processPoliticianBatch(
       return result;
     }
 
+    // Cache campaigns, templates, and JMAP clients to avoid redundant calls
+    const campaignCache = new Map<number, any>();
+    const templateCache = new Map<number, any>();
+    const jmapClientCache = new Map<string, JMAPClient>();
+    const jmapEmailCache = new Map<string, EmailMessage>();
+
     // Resolve JMAP config once for this politician
     const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
     if (!jmapResolve.ok) {
@@ -230,10 +236,38 @@ async function processPoliticianBatch(
       return result;
     }
 
-    // Cache campaigns, templates, and JMAP clients to avoid redundant calls
-    const campaignCache = new Map<number, any>();
-    const templateCache = new Map<number, any>();
-    const jmapClientCache = new Map<string, JMAPClient>();
+    // 1. Pre-fetch JMAP emails in bulk to avoid per-message DB lookups
+    const imp = jmapResolve.config.stalwartImpersonation;
+    const fetchClientKey = imp ? `imp:${politician.email}` : "relay:default";
+    const jmapClientForFetch = imp
+      ? new JMAPClient({
+          apiUrl: jmapResolve.config.jmapApiUrl,
+          accountId: "",
+          basicUsername: buildStalwartImpersonationLogin(
+            imp.relayAccountEmail,
+            politician.email,
+          ),
+          basicPassword: imp.relayAccountPassword,
+        })
+      : new JMAPClient({
+          apiUrl: jmapResolve.config.jmapApiUrl,
+          accountId: jmapResolve.config.jmapAccountId,
+          bearerToken: jmapResolve.config.jmapBearerToken,
+        });
+    jmapClientCache.set(fetchClientKey, jmapClientForFetch);
+
+    try {
+      const externalIds = messages.map((m) => m.external_id);
+      const emails = await jmapClientForFetch.getEmails(externalIds);
+      for (const [id, email] of emails) {
+        jmapEmailCache.set(id, email);
+      }
+    } catch (error) {
+      console.error(
+        `[Reply Worker] Bulk email fetch failed for politician ${politicianId}:`,
+        error,
+      );
+    }
 
     // Process messages in parallel with a concurrency limit
     const CONCURRENCY = 10;
@@ -247,6 +281,7 @@ async function processPoliticianBatch(
             campaignCache,
             templateCache,
             jmapClientCache,
+            jmapEmailCache,
           });
           result.sent++;
           console.log(`[Reply Worker] ✓ Sent reply for message ${message.id}`);
@@ -297,9 +332,37 @@ export async function processReplyImmediately(
     throw new Error(`Politician ${message.politician_id} not found`);
   }
 
+  const imp = jmapResolve.config.stalwartImpersonation;
+  const jmapClientForFetch = imp
+    ? new JMAPClient({
+        apiUrl: jmapResolve.config.jmapApiUrl,
+        accountId: "",
+        basicUsername: buildStalwartImpersonationLogin(
+          imp.relayAccountEmail,
+          politician.email,
+        ),
+        basicPassword: imp.relayAccountPassword,
+      })
+    : new JMAPClient({
+        apiUrl: jmapResolve.config.jmapApiUrl,
+        accountId: jmapResolve.config.jmapAccountId,
+        bearerToken: jmapResolve.config.jmapBearerToken,
+      });
+
+  const emails = await jmapClientForFetch.getEmails([message.external_id]);
+  const jmapEmail = emails.get(message.external_id);
+  if (!jmapEmail) {
+    throw new Error(
+      `Original message ${message.external_id} not found on JMAP server`,
+    );
+  }
+
+  const fetchClientKey = imp ? `imp:${politician.email}` : "relay:default";
   await processSingleMessage(db, message, {
     politician,
     jmapConfig: jmapResolve.config,
+    jmapEmailCache: new Map([[message.external_id, jmapEmail]]),
+    jmapClientCache: new Map([[fetchClientKey, jmapClientForFetch]]),
   });
 }
 
@@ -354,6 +417,7 @@ interface BatchProcessingContext {
   campaignCache?: Map<number, any>;
   templateCache?: Map<number, any>;
   jmapClientCache?: Map<string, JMAPClient>;
+  jmapEmailCache?: Map<string, EmailMessage>;
 }
 
 /**
@@ -392,9 +456,10 @@ async function processSingleMessage(
   }
 
   // 3. Resolve recipient email
-  const senderEmail = await db.getMessageContactEmail(message.id);
+  const jmapEmail = jmapEmailCache?.get(message.external_id);
+  const senderEmail = jmapEmail?.replyTo || jmapEmail?.from;
   if (!senderEmail) {
-    const errorMsg = `Short-term contact email not found for message ${message.id}`;
+    const errorMsg = `Short-term contact email not found for message ${message.id} (JMAP ID ${message.external_id})`;
     await handleSendFailure(db, message, errorMsg);
     throw new Error(errorMsg);
   }

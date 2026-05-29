@@ -564,8 +564,20 @@ describe("Reply Worker", () => {
       );
       vi.spyOn(JMAPClient.prototype, "sendEmail").mockResolvedValue({
         success: true,
-        messageId: "jmap-1",
+        messageId: "jmap-msg-123",
       });
+      vi.spyOn(JMAPClient.prototype, "getEmails").mockImplementation(
+        async (ids: string[]) => {
+          const result = new Map();
+          for (const id of ids) {
+            result.set(id, {
+              from: "sender@example.com",
+              subject: "Original Subject",
+            });
+          }
+          return result;
+        },
+      );
 
       const result = await processScheduledReplies(mockDb, runtimeSecrets);
 
@@ -660,8 +672,20 @@ describe("Reply Worker", () => {
       );
       vi.spyOn(JMAPClient.prototype, "sendEmail").mockResolvedValue({
         success: true,
-        messageId: "jmap-2",
+        messageId: "jmap-msg-123",
       });
+      vi.spyOn(JMAPClient.prototype, "getEmails").mockImplementation(
+        async (ids: string[]) => {
+          const result = new Map();
+          for (const id of ids) {
+            result.set(id, {
+              from: "sender@example.com",
+              subject: "Original Subject",
+            });
+          }
+          return result;
+        },
+      );
 
       const result = await processScheduledReplies(mockDb, runtimeSecrets);
 
@@ -769,8 +793,20 @@ describe("Reply Worker", () => {
       vi.spyOn(mockDb, "updateMessageRetryCount").mockResolvedValue(undefined);
       vi.spyOn(JMAPClient.prototype, "sendEmail").mockResolvedValue({
         success: true,
-        messageId: "jmap-3",
+        messageId: "jmap-msg-123",
       });
+      vi.spyOn(JMAPClient.prototype, "getEmails").mockImplementation(
+        async (ids: string[]) => {
+          const result = new Map();
+          for (const id of ids) {
+            result.set(id, {
+              from: "sender@example.com",
+              subject: "Original Subject",
+            });
+          }
+          return result;
+        },
+      );
 
       const result = await processScheduledReplies(mockDb, runtimeSecrets);
 
@@ -976,8 +1012,20 @@ describe("Reply Worker", () => {
       );
       vi.spyOn(JMAPClient.prototype, "sendEmail").mockResolvedValue({
         success: true,
-        messageId: "jmap-immediate-1",
+        messageId: "jmap-msg-123",
       });
+      vi.spyOn(JMAPClient.prototype, "getEmails").mockImplementation(
+        async (ids: string[]) => {
+          const result = new Map();
+          for (const id of ids) {
+            result.set(id, {
+              from: "sender@example.com",
+              subject: "Original Subject",
+            });
+          }
+          return result;
+        },
+      );
 
       await processReplyImmediately(mockDb, 42, runtimeSecrets);
 

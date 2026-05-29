@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S ./node_modules/.bin/tsx
 
 import { config as dotenv } from "dotenv";
 import type { DatabaseClient } from "../src/database.js";
