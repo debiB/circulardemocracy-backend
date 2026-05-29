@@ -32,6 +32,7 @@ app.use(
 const ReplyTemplateSchema = z.object({
   id: z.number(),
   campaign_id: z.number(),
+  politician_id: z.number(),
   name: z.string(),
   subject: z.string(),
   body: z.string().describe("Markdown formatted email body"),
@@ -45,6 +46,7 @@ const ReplyTemplateSchema = z.object({
 
 const CreateReplyTemplateSchema = z.object({
   campaign_id: z.number(),
+  politician_id: z.number().optional().describe("Politician ID. If missing, will be resolved from the campaign's associated politician."),
   name: z.string().min(3, "Name must be at least 3 characters"),
   subject: z.string().min(1, "Subject is required").max(255),
   body: z.string().min(10, "Message body must be at least 10 characters"),
@@ -163,7 +165,42 @@ app.openapi(createReplyTemplateRoute, async (c) => {
   const db = c.get("db") as DatabaseClient;
   const templateData = c.req.valid("json");
 
-  const result = await createReplyTemplate(db, templateData);
+  // Resolve politician_id if missing
+  if (!templateData.politician_id) {
+    const auth = c.get("auth") as any;
+    if (auth?.userId) {
+      const politicianIds = auth.politicianIds || [];
+      if (politicianIds.length === 1) {
+        templateData.politician_id = politicianIds[0];
+      } else if (politicianIds.length > 1) {
+        return c.json(
+          {
+            error: "Ambiguous politician",
+            message: "User is associated with multiple politicians. Please specify politician_id explicitly.",
+          },
+          400,
+        );
+      } else {
+        return c.json(
+          {
+            error: "Unauthorized",
+            message: "User is not associated with any politician.",
+          },
+          403,
+        );
+      }
+    } else {
+      return c.json(
+        {
+          error: "Unauthorized",
+          message: "Authentication required to create templates.",
+        },
+        401,
+      );
+    }
+  }
+
+  const result = await createReplyTemplate(db, templateData as any);
 
   if (!result.success) {
     return c.json(

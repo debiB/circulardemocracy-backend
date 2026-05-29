@@ -11,15 +11,18 @@ import {
 } from "../src/cli_shared.js";
 import {
   processScheduledReplies,
+processReplyImmediately,
   type ProcessingResult,
+
+
 } from "../src/reply_worker.js";
 
 dotenv({ quiet: true });
 
-/** Must match `MAX_RETRY_ATTEMPTS` in `src/reply_worker.ts`. */
+/** Must match `MAX_RETRY_ATTEMPTS` in `src/reply_worker.ts`. @todo import from there*/
 const MAX_RETRY_ATTEMPTS = 10;
 
-export function parseArgs(args: string[]): CliFilters | null {
+export function parseArgs(args: string[]): CliFilters  {
   const argv = minimist(args, {
     string: ["campaign-name", "politician-name", "campaign-id","politician-id","limit","politician-name","message"],
     boolean: ["dry-run", "help"],
@@ -38,13 +41,10 @@ export function parseArgs(args: string[]): CliFilters | null {
 
   const campaignId = argv["campaign-id"];
   const campaignName = argv["campaign-name"];
-  const politicianId = argv["politician-id"];
+  const politicianId = Number(argv["politician-id"]) || undefined;
   const politicianName = argv["politician-name"];
-  const limit = argv["limit"];
-  const messageId = argv["message"];
-
   if (campaignId !== undefined && campaignName !== undefined) {
-    console.error("Use only o/&ne of --campaign-id or --campaign-name");
+    console.error("Use only one of --campaign-id or --campaign-name");
     process.exit(1);
   }
 
@@ -53,8 +53,12 @@ export function parseArgs(args: string[]): CliFilters | null {
     process.exit(1);
   }
 
-  if (limit !== undefined && politicianId === undefined) {
+  if (argv.limit !== undefined && politicianId === undefined) {
     console.error("--limit requires --politician-id");
+    process.exit(1);
+  }
+  if (argv.messageId !== undefined && politicianId === undefined) {
+    console.error("--message requires --politician-id");
     process.exit(1);
   }
 
@@ -65,8 +69,8 @@ export function parseArgs(args: string[]): CliFilters | null {
     politicianName:
       typeof politicianName === "string" ? politicianName : undefined,
     dryRun: argv["dry-run"] === true,
-    limit: typeof limit === "number" ? limit : undefined,
-    messageId: messageId,
+    limit: Number(argv.limit) || undefined,
+    messageId: argv.message,
   };
 }
 
@@ -75,9 +79,10 @@ async function processFilteredReplies(
   options: CliFilters,
   runtimeSecrets: Record<string, string | undefined>,
 ): Promise<ProcessingResult> {
-  if (options.messageId !== undefined) {
-    console.log(`Processing specific message: ${options.messageId}`);
-    return processReplyImmediately(db, options.messageId, runtimeSecrets);
+  if (options.messageId !== undefined && options.politicianId !== undefined) {
+    console.log(`Processing specific message: ${options.messageId} for ${options.politicianId}`);
+    return processReplyImmediately(db, 
+      options.messageId, options.politicianId, runtimeSecrets);
   }
 
   const campaignId = await resolveCampaignId(db, options);
@@ -101,13 +106,15 @@ export async function previewReadyReplies(
   options: CliFilters,
 ): Promise<void> {
   let allReady: any[] = [];
-
+    const politicianId = await resolvePoliticianId(db, options);
   if (options.messageId !== undefined) {
-    const msg = await db.getMessageReadyToSendById(options.messageId);
+    const msg = await db.getMessageByExternalId
+      (options.messageId, 
+        "stalwart", 
+        options.politicianId || -1);
     allReady = msg ? [msg] : [];
   } else {
     const campaignId = await resolveCampaignId(db, options);
-    const politicianId = await resolvePoliticianId(db, options);
 
     allReady = await db.getMessagesReadyToSend(MAX_RETRY_ATTEMPTS, {
       campaignId,
@@ -145,6 +152,7 @@ export async function previewReadyReplies(
   console.log(
     `\nTotal: ${allReady.length} message(s) ready to send across ${byCampaign.size} campaign(s)`,
   );
+  console.log(allReady.map(m => `${m.external_id} ${m.received_at}`));
 }
 
 function printUsage() {
@@ -190,9 +198,6 @@ async function main(): Promise<void> {
   }
 
   const options = parseArgs(args);
-  if (!options) {
-    return;
-  }
 
   try {
     const db = new DatabaseClientImpl({ url: supabaseUrl, key: supabaseKey });

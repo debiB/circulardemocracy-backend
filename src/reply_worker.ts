@@ -317,7 +317,8 @@ async function processPoliticianBatch(
 
 export async function processReplyImmediately(
   db: DatabaseClient,
-  messageId: number,
+  messageId: string,
+  politicianId: number,
   runtimeSecrets?: RuntimeSecretBindings,
 ): Promise<ProcessingResult> {
   const result: ProcessingResult = {
@@ -328,9 +329,13 @@ export async function processReplyImmediately(
   };
 
   try {
-    const message = await getMessageById(db, messageId);
+    const message = await db.getMessageByExternalId(
+      messageId,
+      "stalwart",
+      politicianId,
+    );
     if (!message) {
-      throw new Error(`Message ${messageId} not eligible for immediate reply`);
+      throw new Error(`Message ${message} not eligible for immediate reply`);
     }
 
     // Still resolve auth per immediate call (CLI/Web-hook context)
@@ -339,12 +344,12 @@ export async function processReplyImmediately(
       throw new Error(jmapResolve.reason);
     }
 
-    const politician = await getPoliticianById(db, message.politician_id);
+    const politician = await getPoliticianById(db, politicianId);
     if (!politician) {
-      throw new Error(`Politician ${message.politician_id} not found`);
+      throw new Error(`Politician ${politicianId} not found`);
     }
 
-    const imp = jmapResolve.config.stalwartImpersonation;
+    const imp = jmapResolve.config.stalwartImpersonation; //do we need to redefined that?)
     const jmapClientForFetch = imp
       ? new JMAPClient({
           apiUrl: jmapResolve.config.jmapApiUrl,
@@ -368,7 +373,7 @@ export async function processReplyImmediately(
         `Original message ${message.external_id} not found on JMAP server`,
       );
     }
-
+    console.log(jmapEmail);
     const fetchClientKey = imp ? `imp:${politician.email}` : "relay:default";
     await processSingleMessage(db, message, {
       politician,
@@ -415,27 +420,6 @@ async function getMessagesReadyToSend(
   }
 }
 
-async function getMessageById(
-  db: DatabaseClient,
-  messageId: number,
-): Promise<MessageToProcess | null> {
-  try {
-    const record = await db.getMessageReadyToSendById(messageId);
-
-    if (!record) {
-      return null;
-    }
-
-    return {
-      ...record,
-      reply_retry_count: record.reply_retry_count ?? 0,
-    };
-  } catch (error) {
-    console.error("Error fetching message by ID");
-    return null;
-  }
-}
-
 interface BatchProcessingContext {
   politician: { id: number; email: string; name: string };
   jmapConfig: WorkerConfig;
@@ -465,13 +449,14 @@ async function processSingleMessage(
   // 1. Get template (cached if in batch)
   let template = templateCache?.get(message.campaign_id);
   if (!template) {
+    console.log("fetch template", politician.id, message.campaign_id);
     template = await db.getActiveTemplateForCampaign(
       message.campaign_id,
       politician.id,
     );
     if (!template) {
       const errorMsg = `No active template found for campaign ${message.campaign_id}`;
-      await handleSendFailure(db, message, errorMsg);
+      //      await handleSendFailure(db, message, errorMsg); this isn't a processing error, just bug on our side
       throw new Error(errorMsg);
     }
     templateCache?.set(message.campaign_id, template);

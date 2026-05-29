@@ -49,6 +49,7 @@ export interface MessageInsert {
 export interface ReplyTemplate {
   id: number;
   campaign_id: number;
+  politician_id: number;
   name: string;
   subject: string;
   body: string;
@@ -896,13 +897,15 @@ export class DatabaseClient {
 
   async deactivateOtherTemplates(
     campaignId: number,
+    politicianId: number,
     excludeTemplateId?: number,
   ): Promise<void> {
     try {
       let query = this.supabase
         .from("reply_templates")
         .update({ active: false })
-        .eq("campaign_id", campaignId);
+        .eq("campaign_id", campaignId)
+        .eq("politician_id", politicianId);
 
       if (excludeTemplateId) {
         query = query.neq("id", excludeTemplateId);
@@ -1480,33 +1483,6 @@ export class DatabaseClient {
     }
 
     return data || [];
-  }
-
-  async getMessageReadyToSendById(messageId: number): Promise<{
-    id: number;
-    external_id: string;
-    politician_id: number;
-    campaign_id: number;
-    sender_hash: string;
-    reply_scheduled_at: string | null;
-    received_at: string;
-    reply_retry_count: number | null;
-  } | null> {
-    const { data, error } = await this.supabase
-      .from("messages")
-      .select(
-        "id, external_id, politician_id, campaign_id, sender_hash, reply_scheduled_at, received_at, reply_retry_count",
-      )
-      .eq("id", messageId)
-      .is("reply_sent_at", null)
-      .eq("duplicate_rank", 0)
-      .limit(1);
-
-    if (error) {
-      throw error;
-    }
-
-    return data && data.length > 0 ? data[0] : null;
   }
 
   async getCampaignById(campaignId: number): Promise<{
