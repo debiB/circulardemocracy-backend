@@ -1401,7 +1401,9 @@ export class DatabaseClient {
       reply_failure_reason: string;
     }> = {},
   ): Promise<void> {
-    if (messageIds.length === 0) return;
+    if (messageIds.length === 0) {
+      return;
+    }
 
     try {
       const { error } = await this.supabase
