@@ -3,6 +3,7 @@
 import minimist from "minimist";
 import { DatabaseClient } from "../src/database.js";
 import {
+  fetchWithPreservedAuth,
   jmapWellKnownSessionUrl,
   resolveMailAccountIdFromSession,
 } from "../src/jmap_client.js";
@@ -368,29 +369,13 @@ async function fetchJmapSession(
   endpoint: string,
   authHeader: string,
 ): Promise<JmapSessionResponse> {
-  let response = await fetch(endpoint, {
+  const response = await fetchWithPreservedAuth(endpoint, {
     method: "GET",
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
     },
-    redirect: "manual",
   });
-
-  // Handle redirects manually to preserve Authorization header (standard fetch strips it on redirects)
-  if (response.status >= 300 && response.status < 400) {
-    const location = response.headers.get("location");
-    if (location) {
-      const nextUrl = new URL(location, endpoint).href;
-      response = await fetch(nextUrl, {
-        method: "GET",
-        headers: {
-          Authorization: authHeader,
-          Accept: "application/json",
-        },
-      });
-    }
-  }
 
   if (!response.ok) {
     const body = await response.text();
