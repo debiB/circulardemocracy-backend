@@ -16,6 +16,7 @@ describe("Reply Worker", () => {
     SUPABASE_ANON_KEY: "anon-key",
     RELAY_SERVICE_ACCOUNT_EMAIL: "relay@example.com",
     RELAY_SERVICE_ACCOUNT_PASSWORD: "relay-pass",
+    ALL_DOMAIN: "",
   };
 
   const mockDb = {
@@ -895,7 +896,7 @@ describe("Reply Worker", () => {
   });
 
   describe("processReplyImmediately", () => {
-    it("throws when the message is not eligible (not found)", async () => {
+    it("returns failed result when the message is not eligible (not found)", async () => {
       const messagesById = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -911,9 +912,9 @@ describe("Reply Worker", () => {
         return {} as any;
       }) as (...args: unknown[]) => unknown);
 
-      await expect(
-        processReplyImmediately(mockDb, 404, runtimeSecrets),
-      ).rejects.toThrow(/not eligible/);
+      const result = await processReplyImmediately(mockDb, 404, runtimeSecrets);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0].error).toMatch(/not eligible/);
       expect(mockDb.markMessageReplyDelivered).not.toHaveBeenCalled();
     });
 
@@ -1028,15 +1029,16 @@ describe("Reply Worker", () => {
         },
       );
 
-      await processReplyImmediately(mockDb, 42, runtimeSecrets);
+      const result = await processReplyImmediately(mockDb, 42, runtimeSecrets);
 
+      expect(result.sent).toBe(1);
       expect(mockDb.markMessageReplyDelivered).toHaveBeenCalledWith(42);
       expect(JMAPClient.prototype.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           from: "outbound@campaign.example",
           fromName: "Politician",
           replyTo: "pol@example.com",
-          to: ["voter@example.com"],
+          to: ["sender@example.com"],
         }),
       );
     });

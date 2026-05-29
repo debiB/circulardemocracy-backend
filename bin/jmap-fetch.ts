@@ -24,7 +24,7 @@ import { config as dotenv } from "dotenv";
 import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
 
 // Load `.env` once; all config is read from `process.env` below (no env.ts wrapper).
-dotenv();
+dotenv({ quiet: true });
 
 const MessageInputSchema = z.object({
   external_id: z

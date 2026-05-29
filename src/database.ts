@@ -1427,7 +1427,11 @@ export class DatabaseClient {
 
   async getMessagesReadyToSend(
     maxRetryAttempts: number,
-    filters: { politicianId?: number; campaignId?: number } = {},
+    filters: {
+      politicianId?: number;
+      campaignId?: number;
+      limit?: number;
+    } = {},
   ): Promise<
     Array<{
       id: number;
@@ -1464,6 +1468,11 @@ export class DatabaseClient {
     if (filters.campaignId !== undefined) {
       query = query.eq("campaign_id", filters.campaignId);
     }
+
+    if (filters.limit !== undefined) {
+      query = query.limit(filters.limit);
+    }
+
     const { data, error } = await query;
 
     if (error) {

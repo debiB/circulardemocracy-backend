@@ -6,6 +6,8 @@ export interface CliFilters {
   politicianId?: number;
   politicianName?: string;
   dryRun?: boolean;
+  limit?: number;
+  messageId?: number;
 }
 
 export async function resolveCampaignId(

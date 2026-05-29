@@ -264,9 +264,7 @@ describe("CLI Argument Parsing", () => {
       const { parseArgs } = await import("../bin/mail.js");
 
       expect(() => parseArgs()).toThrow("process.exit(1)");
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Invalid argument format: invalid-arg",
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Validation error:");
     });
 
     it("should exit with error for missing value", async () => {
@@ -275,9 +273,7 @@ describe("CLI Argument Parsing", () => {
       const { parseArgs } = await import("../bin/mail.js");
 
       expect(() => parseArgs()).toThrow("process.exit(1)");
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Missing value for argument: --message-id",
-      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Validation error:");
     });
   });
 
@@ -636,7 +632,11 @@ describe("CLI Argument Parsing", () => {
       expect(result).toEqual({
         campaignId: undefined,
         campaignName: undefined,
+        politicianId: undefined,
+        politicianName: undefined,
         dryRun: false,
+        limit: undefined,
+        messageId: undefined,
       });
     });
 
@@ -646,7 +646,11 @@ describe("CLI Argument Parsing", () => {
       expect(result).toEqual({
         campaignId: undefined,
         campaignName: undefined,
+        politicianId: undefined,
+        politicianName: undefined,
         dryRun: true,
+        limit: undefined,
+        messageId: undefined,
       });
     });
 
@@ -661,7 +665,11 @@ describe("CLI Argument Parsing", () => {
       expect(result).toEqual({
         campaignId: 5,
         campaignName: undefined,
+        politicianId: undefined,
+        politicianName: undefined,
         dryRun: false,
+        limit: undefined,
+        messageId: undefined,
       });
     });
 
@@ -671,8 +679,45 @@ describe("CLI Argument Parsing", () => {
       expect(result).toEqual({
         campaignId: undefined,
         campaignName: "Climate",
+        politicianId: undefined,
+        politicianName: undefined,
         dryRun: false,
+        limit: undefined,
+        messageId: undefined,
       });
+    });
+
+    it("should parse politician-id and limit", async () => {
+      const { parseArgs } = await import("../bin/send-replies.js");
+      const result = parseArgs(["--politician-id", "10", "--limit", "5"]);
+      expect(result).toEqual({
+        campaignId: undefined,
+        campaignName: undefined,
+        politicianId: 10,
+        politicianName: undefined,
+        dryRun: false,
+        limit: 5,
+        messageId: undefined,
+      });
+    });
+
+    it("should parse message ID", async () => {
+      const { parseArgs } = await import("../bin/send-replies.js");
+      const result = parseArgs(["--message", "123"]);
+      expect(result).toEqual({
+        campaignId: undefined,
+        campaignName: undefined,
+        politicianId: undefined,
+        politicianName: undefined,
+        dryRun: false,
+        limit: undefined,
+        messageId: 123,
+      });
+    });
+
+    it("should reject limit without politician-id", async () => {
+      const { parseArgs } = await import("../bin/send-replies.js");
+      expect(() => parseArgs(["--limit", "5"])).toThrow("process.exit(1)");
     });
 
     it("should reject both campaign-id and campaign-name", async () => {

@@ -127,7 +127,11 @@ interface SendContext {
 export async function processScheduledReplies(
   db: DatabaseClient,
   runtimeSecrets?: RuntimeSecretBindings,
-  filters: { politicianId?: number; campaignId?: number } = {},
+  filters: {
+    politicianId?: number;
+    campaignId?: number;
+    limit?: number;
+  } = {},
 ): Promise<ProcessingResult> {
   const result: ProcessingResult = {
     total: 0,
@@ -315,55 +319,72 @@ export async function processReplyImmediately(
   db: DatabaseClient,
   messageId: number,
   runtimeSecrets?: RuntimeSecretBindings,
-): Promise<void> {
-  const message = await getMessageById(db, messageId);
-  if (!message) {
-    throw new Error(`Message ${messageId} not eligible for immediate reply`);
+): Promise<ProcessingResult> {
+  const result: ProcessingResult = {
+    total: 1,
+    sent: 0,
+    failed: 0,
+    errors: [],
+  };
+
+  try {
+    const message = await getMessageById(db, messageId);
+    if (!message) {
+      throw new Error(`Message ${messageId} not eligible for immediate reply`);
+    }
+
+    // Still resolve auth per immediate call (CLI/Web-hook context)
+    const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
+    if (!jmapResolve.ok) {
+      throw new Error(jmapResolve.reason);
+    }
+
+    const politician = await getPoliticianById(db, message.politician_id);
+    if (!politician) {
+      throw new Error(`Politician ${message.politician_id} not found`);
+    }
+
+    const imp = jmapResolve.config.stalwartImpersonation;
+    const jmapClientForFetch = imp
+      ? new JMAPClient({
+          apiUrl: jmapResolve.config.jmapApiUrl,
+          accountId: "",
+          basicUsername: buildStalwartImpersonationLogin(
+            imp.relayAccountEmail,
+            politician.email,
+          ),
+          basicPassword: imp.relayAccountPassword,
+        })
+      : new JMAPClient({
+          apiUrl: jmapResolve.config.jmapApiUrl,
+          accountId: jmapResolve.config.jmapAccountId,
+          bearerToken: jmapResolve.config.jmapBearerToken,
+        });
+
+    const emails = await jmapClientForFetch.getEmails([message.external_id]);
+    const jmapEmail = emails.get(message.external_id);
+    if (!jmapEmail) {
+      throw new Error(
+        `Original message ${message.external_id} not found on JMAP server`,
+      );
+    }
+
+    const fetchClientKey = imp ? `imp:${politician.email}` : "relay:default";
+    await processSingleMessage(db, message, {
+      politician,
+      jmapConfig: jmapResolve.config,
+      jmapEmailCache: new Map([[message.external_id, jmapEmail]]),
+      jmapClientCache: new Map([[fetchClientKey, jmapClientForFetch]]),
+    });
+
+    result.sent = 1;
+    return result;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    result.failed = 1;
+    result.errors.push({ message_id: messageId, error: errorMsg });
+    return result;
   }
-
-  // Still resolve auth per immediate call (CLI/Web-hook context)
-  const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
-  if (!jmapResolve.ok) {
-    throw new Error(jmapResolve.reason);
-  }
-
-  const politician = await getPoliticianById(db, message.politician_id);
-  if (!politician) {
-    throw new Error(`Politician ${message.politician_id} not found`);
-  }
-
-  const imp = jmapResolve.config.stalwartImpersonation;
-  const jmapClientForFetch = imp
-    ? new JMAPClient({
-        apiUrl: jmapResolve.config.jmapApiUrl,
-        accountId: "",
-        basicUsername: buildStalwartImpersonationLogin(
-          imp.relayAccountEmail,
-          politician.email,
-        ),
-        basicPassword: imp.relayAccountPassword,
-      })
-    : new JMAPClient({
-        apiUrl: jmapResolve.config.jmapApiUrl,
-        accountId: jmapResolve.config.jmapAccountId,
-        bearerToken: jmapResolve.config.jmapBearerToken,
-      });
-
-  const emails = await jmapClientForFetch.getEmails([message.external_id]);
-  const jmapEmail = emails.get(message.external_id);
-  if (!jmapEmail) {
-    throw new Error(
-      `Original message ${message.external_id} not found on JMAP server`,
-    );
-  }
-
-  const fetchClientKey = imp ? `imp:${politician.email}` : "relay:default";
-  await processSingleMessage(db, message, {
-    politician,
-    jmapConfig: jmapResolve.config,
-    jmapEmailCache: new Map([[message.external_id, jmapEmail]]),
-    jmapClientCache: new Map([[fetchClientKey, jmapClientForFetch]]),
-  });
 }
 
 // Maximum number of retry attempts before giving up
@@ -375,7 +396,11 @@ const RETRY_DELAYS_MINUTES = [5, 15, 60];
  */
 async function getMessagesReadyToSend(
   db: DatabaseClient,
-  filters: { politicianId?: number; campaignId?: number } = {},
+  filters: {
+    politicianId?: number;
+    campaignId?: number;
+    limit?: number;
+  } = {},
 ): Promise<MessageToProcess[]> {
   try {
     const data = await db.getMessagesReadyToSend(MAX_RETRY_ATTEMPTS, filters);

@@ -14,16 +14,22 @@ import {
   type ProcessingResult,
 } from "../src/reply_worker.js";
 
-dotenv();
+dotenv({ quiet: true });
 
 /** Must match `MAX_RETRY_ATTEMPTS` in `src/reply_worker.ts`. */
 const MAX_RETRY_ATTEMPTS = 10;
 
 export function parseArgs(args: string[]): CliFilters | null {
   const argv = minimist(args, {
-    string: ["campaign-name", "politician-name"],
+    string: ["campaign-name", "politician-name", "campaign-id","politician-id","limit","politician-name","message"],
     boolean: ["dry-run", "help"],
     alias: { h: "help" },
+    unknown: (d: string) => {
+      const allowed = []; //merge with boolean and string?
+      if (d[0] !== "-" ) return true;
+      if (allowed.includes(d.split("=")[0].slice(2))) return true;
+      console.error("unknown param", d);
+    },
   });
 
   if (argv.help) {
@@ -34,14 +40,21 @@ export function parseArgs(args: string[]): CliFilters | null {
   const campaignName = argv["campaign-name"];
   const politicianId = argv["politician-id"];
   const politicianName = argv["politician-name"];
+  const limit = argv["limit"];
+  const messageId = argv["message"];
 
   if (campaignId !== undefined && campaignName !== undefined) {
-    console.error("Use only one of --campaign-id or --campaign-name");
+    console.error("Use only o/&ne of --campaign-id or --campaign-name");
     process.exit(1);
   }
 
   if (politicianId !== undefined && politicianName !== undefined) {
     console.error("Use only one of --politician-id or --politician-name");
+    process.exit(1);
+  }
+
+  if (limit !== undefined && politicianId === undefined) {
+    console.error("--limit requires --politician-id");
     process.exit(1);
   }
 
@@ -52,6 +65,8 @@ export function parseArgs(args: string[]): CliFilters | null {
     politicianName:
       typeof politicianName === "string" ? politicianName : undefined,
     dryRun: argv["dry-run"] === true,
+    limit: typeof limit === "number" ? limit : undefined,
+    messageId: messageId,
   };
 }
 
@@ -60,14 +75,24 @@ async function processFilteredReplies(
   options: CliFilters,
   runtimeSecrets: Record<string, string | undefined>,
 ): Promise<ProcessingResult> {
+  if (options.messageId !== undefined) {
+    console.log(`Processing specific message: ${options.messageId}`);
+    return processReplyImmediately(db, options.messageId, runtimeSecrets);
+  }
+
   const campaignId = await resolveCampaignId(db, options);
   const politicianId = await resolvePoliticianId(db, options);
 
-  console.log("Processing replies with filters:", { campaignId, politicianId });
+  console.log("Processing replies with filters:", {
+    campaignId,
+    politicianId,
+    limit: options.limit,
+  });
 
   return processScheduledReplies(db, runtimeSecrets, {
     campaignId,
     politicianId,
+    limit: options.limit,
   });
 }
 
@@ -75,13 +100,21 @@ export async function previewReadyReplies(
   db: DatabaseClient,
   options: CliFilters,
 ): Promise<void> {
-  const campaignId = await resolveCampaignId(db, options);
-  const politicianId = await resolvePoliticianId(db, options);
+  let allReady: any[] = [];
 
-  const allReady = await db.getMessagesReadyToSend(MAX_RETRY_ATTEMPTS, {
-    campaignId,
-    politicianId,
-  });
+  if (options.messageId !== undefined) {
+    const msg = await db.getMessageReadyToSendById(options.messageId);
+    allReady = msg ? [msg] : [];
+  } else {
+    const campaignId = await resolveCampaignId(db, options);
+    const politicianId = await resolvePoliticianId(db, options);
+
+    allReady = await db.getMessagesReadyToSend(MAX_RETRY_ATTEMPTS, {
+      campaignId,
+      politicianId,
+      limit: options.limit,
+    });
+  }
 
   console.log("DRY RUN - No replies will be sent.\n");
 
@@ -121,13 +154,16 @@ Send Replies - Test outbound auto-replies using the production reply worker
 USAGE:
   send-replies
   send-replies [--campaign-id <id> | --campaign-name <hint>]
-  send-replies [--politician-id <id> | --politician-name <hint>]
+  send-replies [--politician-id <id> | --politician-name <hint>] [--limit <n>]
+  send-replies [--message <id>]
 
 OPTIONS:
   --campaign-id <id>      Filter by campaign (numeric id)
   --campaign-name <hint>  Filter by campaign (name/slug ilike match)
   --politician-id <id>    Filter by politician (numeric id)
   --politician-name <hint> Filter by politician (email exact or partial)
+  --limit <n>             Limit the number of emails processed (requires --politician-id)
+  --message <id>          Process only this specific message ID
   --dry-run               Preview what would be sent without sending mail
   -h, --help              Show this help message
 
