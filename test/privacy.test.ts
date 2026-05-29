@@ -263,7 +263,6 @@ describe("Privacy-First Message Storage", () => {
         duplicate_rank: 0,
         processing_status: "processed",
         sender_flag: "normal",
-        is_reply: false,
         stalwart_message_id: "stalwart-msg-456",
         stalwart_account_id: "politician@gov.com",
       };

@@ -102,6 +102,7 @@ describe("message_processor", () => {
       duplicate_rank: 0,
       reply_sent_at: null,
       reply_scheduled_at: null,
+      processing_status: "processed",
     });
     vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue(null);
     vi.spyOn(mockDb, "insertMessage").mockResolvedValue(100);

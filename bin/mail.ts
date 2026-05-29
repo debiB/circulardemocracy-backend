@@ -44,7 +44,6 @@ const MessageInputSchema = z.object({
     .optional()
     .describe("Optional campaign name hint from sender"),
   sender_flag: z.enum(["normal", "replyToDiffers", "suspicious"]).optional(),
-  is_reply: z.boolean().optional(),
 });
 
 export function parseArgs(): MessageInput | null {

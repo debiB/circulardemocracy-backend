@@ -42,7 +42,6 @@ export interface MessageInsert {
   processing_status: string;
   reply_scheduled_at?: string | null;
   sender_flag?: string;
-  is_reply?: boolean;
   stalwart_message_id?: string;
   stalwart_account_id?: string;
 }
@@ -1377,11 +1376,12 @@ export class DatabaseClient {
     duplicate_rank: number;
     reply_sent_at: string | null;
     reply_scheduled_at: string | null;
+    processing_status: string;
   } | null> {
     const { data, error } = await this.supabase
       .from("messages")
       .select(
-        "id, campaign_id, politician_id, sender_hash, received_at, duplicate_rank, reply_sent_at, reply_scheduled_at",
+        "id, campaign_id, politician_id, sender_hash, received_at, duplicate_rank, reply_sent_at, reply_scheduled_at, processing_status",
       )
       .eq("id", messageId)
       .limit(1);

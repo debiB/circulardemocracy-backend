@@ -59,7 +59,7 @@ export async function applyReplyScheduleForMessage(
   messageId: number,
 ): Promise<ScheduleResult | null> {
   const row = await db.getMessageForReplyScheduling(messageId);
-  if (!row || row.reply_sent_at) {
+  if (!row || row.reply_sent_at || row.processing_status === "replied" || row.processing_status === "followup") {
     return null;
   }
   if (row.campaign_id == null || row.duplicate_rank !== 0) {
@@ -137,6 +137,9 @@ export async function processMessage(
 
   const senderHash = await hashEmail(data.sender_email);
 
+  const isReply =
+    data.is_reply === true || /^(re:|fwd:|fw:)/i.test(data.subject.trim());
+
   const messageData: MessageInsert = {
     external_id: data.external_id,
     channel: "api",
@@ -149,10 +152,9 @@ export async function processMessage(
     language: "auto",
     received_at: data.timestamp,
     duplicate_rank: 0,
-    processing_status: "processed",
+    processing_status: isReply ? "followup" : "processed",
     reply_scheduled_at: null,
     sender_flag: data.sender_flag,
-    is_reply: data.is_reply,
     stalwart_message_id: undefined,
     stalwart_account_id: undefined,
   };

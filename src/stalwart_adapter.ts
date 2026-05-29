@@ -227,7 +227,6 @@ export function adaptStalwartHookToMessageInput(
     channel_source: "stalwart",
     campaign_hint: campaignHint,
     sender_flag: senderFlag,
-    is_reply: isReply,
   };
 
   return {

@@ -491,6 +491,7 @@ describe("Message Processor Auto-Reply", () => {
         duplicate_rank: 0,
         reply_sent_at: null,
         reply_scheduled_at: null,
+        processing_status: "processed",
       }),
     );
   });

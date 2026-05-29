@@ -128,7 +128,6 @@ describe("Privacy-First Integration Tests", () => {
         duplicate_rank: 0,
         processing_status: "processed",
         sender_flag: "normal",
-        is_reply: false,
         stalwart_message_id: "stalwart-msg-12345",
         stalwart_account_id: "politician@gov.com",
       };

@@ -37,7 +37,6 @@ describe("Stalwart Adapter - Reply Detection", () => {
       const result = adaptStalwartHookToMessageInput(payload);
 
       expect(result.isReply).toBe(true);
-      expect(result.messageInput.is_reply).toBe(true);
     });
 
     it("should detect reply when References header is present", () => {
@@ -149,7 +148,6 @@ describe("Stalwart Adapter - Reply Detection", () => {
       const result = adaptStalwartHookToMessageInput(payload);
 
       expect(result.isReply).toBe(false);
-      expect(result.messageInput.is_reply).toBe(false);
     });
 
     it("should NOT detect reply when subject contains 'Re:' in middle", () => {

@@ -61,7 +61,6 @@ const MessageInputSchema = z.object({
     .optional()
     .describe("Optional campaign name hint from sender"),
   sender_flag: z.enum(["normal", "replyToDiffers", "suspicious"]).optional(),
-  is_reply: z.boolean().optional(),
 });
 
 type SenderFlag = "normal" | "replyToDiffers" | "suspicious";
@@ -277,10 +276,6 @@ class CliAi implements Ai {
   }
 }
 
-function detectReplyFromSubject(subject: string): boolean {
-  return /^(re:|fwd:|fw:)/i.test(subject.trim());
-}
-
 function determineSenderFlag(
   replyToEmail: string | undefined,
   fromEmail: string | undefined,
@@ -362,7 +357,6 @@ function convertJmapEmailToMessageInput(email: JmapEmail): MessageInput {
     timestamp: toIsoDate(email.receivedAt),
     channel_source: "stalwart",
     sender_flag: determineSenderFlag(replyToAddress.email, fromAddress.email),
-    is_reply: detectReplyFromSubject(subject),
   };
 
   return MessageInputSchema.parse(messageInput);

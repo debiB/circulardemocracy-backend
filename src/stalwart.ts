@@ -491,9 +491,8 @@ async function processEmailForRecipient(
       language: "auto", // TODO: detect language
       received_at: new Date(hookData.timestamp * 1000).toISOString(),
       duplicate_rank: duplicateRank,
-      processing_status: "processed",
+      processing_status: isReply ? "followup" : "processed",
       sender_flag: senderFlag,
-      is_reply: isReply,
       stalwart_message_id: hookData.messageId,
       stalwart_account_id: recipientEmail, // JMAP account is the politician's email
     };
