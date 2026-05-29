@@ -1396,7 +1396,10 @@ export class DatabaseClient {
   async bulkUpdateMessageStatus(
     messageIds: number[],
     status: string,
-    extraFields: Partial<{ reply_sent_at: string; reply_failure_reason: string }> = {},
+    extraFields: Partial<{
+      reply_sent_at: string;
+      reply_failure_reason: string;
+    }> = {},
   ): Promise<void> {
     if (messageIds.length === 0) return;
 
@@ -1446,7 +1449,7 @@ export class DatabaseClient {
       .eq("processing_status", "processed") // Only pick up messages not already being sent or replied
       .is("reply_sent_at", null)
       .in("campaign_id", campaignIds)
-      .eq("duplicate_rank", 0)
+      //      .eq("duplicate_rank", 0)
       .lt("reply_retry_count", maxRetryAttempts)
       .or("reply_scheduled_at.is.null,reply_scheduled_at.lte.now()");
 
