@@ -71,7 +71,10 @@ export async function applyReplyScheduleForMessage(
     return null;
   }
 
-  const activeTemplate = await db.getActiveTemplateForCampaign(row.campaign_id);
+  const activeTemplate = await db.getActiveTemplateForCampaign(
+    row.campaign_id,
+    row.politician_id,
+  );
   if (!activeTemplate) {
     return null;
   }
@@ -109,6 +112,7 @@ export async function processMessage(
   const existingMessage = await db.getMessageByExternalId(
     data.external_id,
     data.channel_source || "unknown",
+    politician.id,
   );
 
   if (existingMessage) {

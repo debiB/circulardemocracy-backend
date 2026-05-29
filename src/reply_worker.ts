@@ -434,13 +434,15 @@ async function processSingleMessage(
     campaignCache,
     templateCache,
     jmapClientCache,
-    jmapEmailCache,
   } = context;
 
   // 1. Get template (cached if in batch)
   let template = templateCache?.get(message.campaign_id);
   if (!template) {
-    template = await db.getActiveTemplateForCampaign(message.campaign_id);
+    template = await db.getActiveTemplateForCampaign(
+      message.campaign_id,
+      politician.id,
+    );
     if (!template) {
       const errorMsg = `No active template found for campaign ${message.campaign_id}`;
       await handleSendFailure(db, message, errorMsg);
@@ -463,7 +465,7 @@ async function processSingleMessage(
   }
 
   // 3. Resolve recipient email
-  const jmapEmail = jmapEmailCache?.get(message.external_id);
+  const jmapEmail = context.jmapEmailCache?.get(message.external_id);
   const senderEmail = jmapEmail?.replyTo || jmapEmail?.from;
   if (!senderEmail) {
     const errorMsg = `Short-term contact email not found for message ${message.id} (JMAP ID ${message.external_id})`;
