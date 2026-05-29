@@ -368,29 +368,13 @@ async function fetchJmapSession(
   endpoint: string,
   authHeader: string,
 ): Promise<JmapSessionResponse> {
-  let response = await fetch(endpoint, {
+  const response = await fetch(endpoint, {
     method: "GET",
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
     },
-    redirect: "manual",
   });
-
-  // Handle redirects manually to preserve Authorization header (standard fetch strips it on redirects)
-  if (response.status >= 300 && response.status < 400) {
-    const location = response.headers.get("location");
-    if (location) {
-      const nextUrl = new URL(location, endpoint).href;
-      response = await fetch(nextUrl, {
-        method: "GET",
-        headers: {
-          Authorization: authHeader,
-          Accept: "application/json",
-        },
-      });
-    }
-  }
 
   if (!response.ok) {
     const body = await response.text();
@@ -1264,10 +1248,9 @@ async function main() {
     process.exit(1);
   }
 
-  if (!impersonationPassword && !appPassword) {
+  if (!allDomainRaw && !appPassword) {
     console.error(
       "Error: JMAP_SERVICE_ACCOUNT_PASSWORD environment variable or --password must be set",
-      impersonationPassword, appPassword
     );
     console.error("Create an app password in Stalwart and export it before running CLI.");
     process.exit(1);
