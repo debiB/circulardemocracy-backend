@@ -1460,7 +1460,6 @@ export class DatabaseClient {
     if (filters.campaignId !== undefined) {
       query = query.eq("campaign_id", filters.campaignId);
     }
-
     const { data, error } = await query;
 
     if (error) {

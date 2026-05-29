@@ -375,11 +375,10 @@ async function fetchJmapSession(
       Accept: "application/json",
     },
   });
-
   if (!response.ok) {
     const body = await response.text();
     throw new Error(
-      `Failed to connect to JMAP endpoint (${response.status}): ${body || "No response body"}`,
+      `Failed to connect to ${endpoint} (${response.status}): ${body || "No response body"}`,
     );
   }
 
