@@ -825,12 +825,14 @@ export class DatabaseClient {
   async getMessageByExternalId(
     externalId: string,
     channelSource: string,
+    politician: string,
   ): Promise<(MessageInsert & { id: number; campaigns: Campaign }) | null> {
     try {
       const { data, error } = await this.supabase
         .from("messages")
         .select("*, campaigns(id, name)")
         .eq("external_id", externalId)
+        .eq("politician_id", politician)
         .eq("channel_source", channelSource)
         .limit(1);
 

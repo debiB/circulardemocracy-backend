@@ -59,7 +59,12 @@ export async function applyReplyScheduleForMessage(
   messageId: number,
 ): Promise<ScheduleResult | null> {
   const row = await db.getMessageForReplyScheduling(messageId);
-  if (!row || row.reply_sent_at || row.processing_status === "replied" || row.processing_status === "followup") {
+  if (
+    !row ||
+    row.reply_sent_at ||
+    row.processing_status === "replied" ||
+    row.processing_status === "followup"
+  ) {
     return null;
   }
   if (row.campaign_id == null || row.duplicate_rank !== 0) {
@@ -104,6 +109,7 @@ export async function processMessage(
   const existingMessage = await db.getMessageByExternalId(
     data.external_id,
     data.channel_source || "unknown",
+    politician.id,
   );
 
   if (existingMessage) {
