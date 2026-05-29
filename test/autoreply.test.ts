@@ -540,6 +540,7 @@ describe("Message Processor Auto-Reply", () => {
     expect(result.success).toBe(true);
     expect(result.reply_scheduled_at).toBeNull();
     expect(result.send_immediately).toBe(true);
+    expect(mockDb.getActiveTemplateForCampaign).toHaveBeenCalledWith(10, 1);
     expect(mockDb.storeMessageContact).toHaveBeenCalledWith(
       expect.objectContaining({
         messageId: 100,

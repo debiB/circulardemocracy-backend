@@ -71,6 +71,7 @@ describe("message_processor", () => {
     expect(mockDb.getMessageByExternalId).toHaveBeenCalledWith(
       "ext-123",
       "unknown",
+      1,
     );
   });
 
@@ -118,6 +119,7 @@ describe("message_processor", () => {
     expect(result.campaign_id).toBe(10);
     expect(mockDb.insertMessage).toHaveBeenCalled();
     expect(mockDb.upsertSupporter).toHaveBeenCalled();
+    expect(mockDb.getActiveTemplateForCampaign).toHaveBeenCalledWith(10, 1);
     expect(mockDb.storeMessageContact).toHaveBeenCalledWith(
       expect.objectContaining({
         messageId: 100,

@@ -434,6 +434,7 @@ async function processSingleMessage(
     campaignCache,
     templateCache,
     jmapClientCache,
+    jmapEmailCache,
   } = context;
 
   // 1. Get template (cached if in batch)

@@ -91,6 +91,19 @@ describe("Stalwart Webhook", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEnv.AI.run.mockResolvedValue({ data: [[0.1, 0.2, 0.3]] });
+    vi.mocked(mockDb.getMessageForReplyScheduling).mockImplementation(
+      async (messageId: number) => ({
+        id: messageId,
+        campaign_id: 5,
+        politician_id: 1,
+        sender_hash: "hashed-email",
+        received_at: new Date().toISOString(),
+        duplicate_rank: 0,
+        reply_sent_at: null,
+        reply_scheduled_at: null,
+        processing_status: "processed",
+      }),
+    );
   });
 
   describe("Schema Translation", () => {
@@ -837,6 +850,7 @@ describe("Stalwart Webhook", () => {
       expect(result.campaign_id).toBe(5);
       expect(result.campaign_name).toBe("Climate Action");
       expect(result.senderFlag).toBe("normal");
+      expect(mockDb.getActiveTemplateForCampaign).toHaveBeenCalledWith(5, 1);
 
       expect(mockDb.insertMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1015,6 +1029,7 @@ describe("Stalwart Webhook", () => {
       expect(result.campaign_id).toBe(5);
       expect(result.campaign_name).toBe("Climate Action");
       expect(result.senderFlag).toBe("normal");
+      expect(mockDb.getActiveTemplateForCampaign).toHaveBeenCalledWith(5, 1);
 
       expect(mockDb.insertMessage).toHaveBeenCalledWith(
         expect.objectContaining({

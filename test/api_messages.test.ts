@@ -235,6 +235,10 @@ describe("Messages API Integration", () => {
     });
     const res = await app.fetch(req, env);
     expect(res.status).toBe(200);
+    expect(mockDbInstance.getActiveTemplateForCampaign).toHaveBeenCalledWith(
+      10,
+      1,
+    );
     const body = (await res.json()) as { status: string; message_id: number };
     expect(body.status).toBe("processed");
     expect(body.message_id).toBe(100);

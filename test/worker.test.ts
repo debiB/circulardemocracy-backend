@@ -36,6 +36,7 @@ describe("Reply Worker", () => {
     markMessageReplyDelivered: vi.fn(),
     updateMessageRetryCount: vi.fn(),
     markMessageAsFailed: vi.fn(),
+    bulkUpdateMessageStatus: vi.fn(),
   } as any;
 
   const mockJmapClient = {

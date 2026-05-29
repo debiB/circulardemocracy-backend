@@ -71,7 +71,10 @@ export async function applyReplyScheduleForMessage(
     return null;
   }
 
-  const activeTemplate = await db.getActiveTemplateForCampaign(row.campaign_id);
+  const activeTemplate = await db.getActiveTemplateForCampaign(
+    row.campaign_id,
+    row.politician_id,
+  );
   if (!activeTemplate) {
     return null;
   }
