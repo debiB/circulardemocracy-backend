@@ -480,6 +480,61 @@ export class JMAPClient {
   }
 
   /**
+   * Fetches multiple emails by their JMAP IDs.
+   * Useful for retrieving sender details on-demand.
+   */
+  async getEmails(ids: string[]): Promise<Map<string, EmailMessage>> {
+    if (ids.length === 0) return new Map();
+
+    try {
+      const authHeader = this.authHeader();
+      const apiUrl = await this.resolvePostApiUrl();
+
+      const json = await this.jmapPost(apiUrl, authHeader, [
+        [
+          "Email/get",
+          {
+            accountId: this.config.accountId,
+            ids,
+            properties: ["id", "from", "replyTo", "subject"],
+          },
+          "emailsGet",
+        ],
+      ]);
+
+      const responses = json.methodResponses;
+      if (!responses) {
+        throw new Error("Invalid JMAP response: missing methodResponses");
+      }
+
+      const body = this.getMethodResponse(
+        responses,
+        "Email/get",
+        "emailsGet",
+      ) as { list?: any[] };
+
+      const result = new Map<string, EmailMessage>();
+      for (const item of body.list || []) {
+        const from = item.from?.[0];
+        const replyTo = item.replyTo?.[0];
+        
+        result.set(item.id, {
+          from: from?.email || "",
+          fromName: from?.name || "",
+          to: [], // Not needed for our lookup
+          replyTo: replyTo?.email || undefined,
+          subject: item.subject || "",
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error("JMAP getEmails failed:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Tests the JMAP connection
    */
   async testConnection(): Promise<boolean> {
