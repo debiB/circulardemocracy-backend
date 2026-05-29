@@ -229,13 +229,13 @@ export SUPABASE_ANON_KEY="your-supabase-anon-key"
 # Mail server base URL (no path). Session URL is ${JMAP_URL%/}/.well-known/jmap
 export JMAP_URL="https://mail.example.org"
 
-# Supabase relay identity (password grant) used by the reply worker to obtain a JWT for JMAP send
-export RELAY_SERVICE_ACCOUNT_EMAIL="relay-service@yourdomain.com"
-export RELAY_SERVICE_ACCOUNT_PASSWORD="relay-user-password"
+# Stalwart admin / Supabase user for outbound JMAP (impersonation or password-grant JWT)
+export JMAP_ADMIN_EMAIL="admin@yourdomain.com"
+export JMAP_ADMIN_PASSWORD="admin-login-password"
 
-# Optional: when set (e.g. example.org), outbound sends use Stalwart impersonation
-# (fromAddress%RELAY_SERVICE_ACCOUNT_EMAIL) instead of the Supabase relay JWT
-export ALL_DOMAIN="example.org"
+# Default hosted mail domain (e.g. example.org). When set, outbound sends use Stalwart impersonation
+# (fromAddress%JMAP_ADMIN_EMAIL) instead of the Supabase relay JWT
+export DEFAULT_DOMAIN="example.org"
 
 # For JMAP CLIs only (`jmap-fetch`, `reprocess-messages`): mailbox basic auth
 export JMAP_SERVICE_ACCOUNT_EMAIL="mailbox@yourdomain.com"
@@ -352,7 +352,7 @@ npx tsx bin/cli send-replies --campaign-name "Climate Action"
 npx tsx bin/cli send-replies --dry-run --campaign-name "Climate Action"
 ```
 
-Uses `processScheduledReplies` and `processReplyImmediately` from `src/reply_worker.ts`. With `ALL_DOMAIN` set in `.env`, outbound mail uses Stalwart impersonation (`target%RELAY_SERVICE_ACCOUNT_EMAIL`); otherwise the Supabase relay JWT path.
+Uses `processScheduledReplies` and `processReplyImmediately` from `src/reply_worker.ts`. With `DEFAULT_DOMAIN` set in `.env`, outbound mail uses Stalwart impersonation (`target%JMAP_ADMIN_EMAIL`); otherwise the Supabase relay JWT path.
 
 **API Access Examples:**
 
@@ -687,10 +687,10 @@ This API is designed to be deployed as a Cloudflare Worker. The `wrangler` CLI, 
     npx wrangler secret put SUPABASE_KEY
     npx wrangler secret put JMAP_URL
     npx wrangler secret put SUPABASE_ANON_KEY
-    npx wrangler secret put RELAY_SERVICE_ACCOUNT_EMAIL
-    npx wrangler secret put RELAY_SERVICE_ACCOUNT_PASSWORD
+    npx wrangler secret put JMAP_ADMIN_EMAIL
+    npx wrangler secret put JMAP_ADMIN_PASSWORD
     # Optional, for Stalwart impersonation instead of relay JWT:
-    npx wrangler secret put ALL_DOMAIN
+    npx wrangler secret put DEFAULT_DOMAIN
     ```
 
 3.  **Deploy the Worker**
@@ -736,10 +736,10 @@ The platform is designed with privacy-by-design principles:
 Reply sending uses one service account for JMAP authentication across all politicians:
 
 - `JMAP_URL` (base mail server; session URL is `JMAP_URL` + `/.well-known/jmap`)
-- `RELAY_SERVICE_ACCOUNT_EMAIL`
-- `RELAY_SERVICE_ACCOUNT_PASSWORD`
-- `SUPABASE_ANON_KEY` — required when `ALL_DOMAIN` is unset (Supabase relay JWT for JMAP)
-- `ALL_DOMAIN` (optional) — when set, sends use Stalwart Basic-auth impersonation (`target%RELAY_SERVICE_ACCOUNT_EMAIL`) instead of the relay JWT
+- `JMAP_ADMIN_EMAIL`
+- `JMAP_ADMIN_PASSWORD`
+- `SUPABASE_ANON_KEY` — required when `DEFAULT_DOMAIN` is unset (Supabase relay JWT for JMAP)
+- `DEFAULT_DOMAIN` (optional) — when set, sends use Stalwart Basic-auth impersonation (`target%JMAP_ADMIN_EMAIL`) instead of the relay JWT
 
 At runtime, the reply worker and `bin/send-replies` resolve these from Worker bindings (`c.env`) or `.env` (`process.env`) in development. The cron schedule is configured in `wrangler.toml` (every 5 minutes).
 

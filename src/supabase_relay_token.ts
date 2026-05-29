@@ -20,10 +20,10 @@ export async function getSupabaseRelayAccessToken(
 
   const supabaseUrl = String(env.SUPABASE_URL || "").trim();
   const supabaseAnonKey = String(env.SUPABASE_ANON_KEY || "").trim();
-  const relayEmail = String(env.RELAY_SERVICE_ACCOUNT_EMAIL || "").trim();
-  const relayPassword = String(env.RELAY_SERVICE_ACCOUNT_PASSWORD || "").trim();
+  const adminEmail = String(env.JMAP_ADMIN_EMAIL || "").trim();
+  const adminPassword = String(env.JMAP_ADMIN_PASSWORD || "").trim();
 
-  if (!supabaseUrl || !supabaseAnonKey || !relayEmail || !relayPassword) {
+  if (!supabaseUrl || !supabaseAnonKey || !adminEmail || !adminPassword) {
     return null;
   }
 
@@ -36,8 +36,8 @@ export async function getSupabaseRelayAccessToken(
         apikey: supabaseAnonKey,
       },
       body: JSON.stringify({
-        email: relayEmail,
-        password: relayPassword,
+        email: adminEmail,
+        password: adminPassword,
       }),
     },
   );

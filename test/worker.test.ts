@@ -14,8 +14,8 @@ describe("Reply Worker", () => {
     JMAP_URL: "https://jmap.example.com",
     SUPABASE_URL: "https://test.supabase.co",
     SUPABASE_ANON_KEY: "anon-key",
-    RELAY_SERVICE_ACCOUNT_EMAIL: "relay@example.com",
-    RELAY_SERVICE_ACCOUNT_PASSWORD: "relay-pass",
+    JMAP_ADMIN_EMAIL: "admin@example.com",
+    JMAP_ADMIN_PASSWORD: "admin-pass",
   };
 
   const mockDb = {

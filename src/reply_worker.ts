@@ -16,7 +16,7 @@ import {
   buildStalwartImpersonationLogin,
   emailHostedOnDomain,
   normalizeMailDomain,
-  resolveRelayImpersonationCredentials,
+  resolveJmapAdminCredentials,
   type StalwartImpersonationConfig,
 } from "./stalwart_jmap";
 import { getSupabaseRelayAccessToken } from "./supabase_relay_token";
@@ -33,14 +33,14 @@ export type MailSendBindings = {
   JMAP_URL?: string;
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
-  /** Supabase user (email) used for password-grant relay tokens to call JMAP as the service identity. */
-  RELAY_SERVICE_ACCOUNT_EMAIL?: string;
-  RELAY_SERVICE_ACCOUNT_PASSWORD?: string;
+  /** Stalwart admin / Supabase user for outbound JMAP (impersonation or password-grant JWT). */
+  JMAP_ADMIN_EMAIL?: string;
+  JMAP_ADMIN_PASSWORD?: string;
   /**
-   * When set (e.g. from `ALL_DOMAIN` in `.env`), outbound mail uses Stalwart Basic-auth
-   * impersonation (`fromAddress%RELAY_SERVICE_ACCOUNT_EMAIL`) instead of the Supabase relay Bearer.
+   * When set (e.g. from `DEFAULT_DOMAIN` in `.env`), outbound mail uses Stalwart Basic-auth
+   * impersonation (`fromAddress%JMAP_ADMIN_EMAIL`) instead of the Supabase relay Bearer.
    */
-  ALL_DOMAIN?: string;
+  DEFAULT_DOMAIN?: string;
 };
 
 function resolveStalwartJmapWorkerConfig(
@@ -54,12 +54,12 @@ function resolveStalwartJmapWorkerConfig(
     return null;
   }
 
-  const allDomainRaw = (env.ALL_DOMAIN || "").trim();
-  if (allDomainRaw) {
-    const relay = resolveRelayImpersonationCredentials(
+  const defaultDomainRaw = (env.DEFAULT_DOMAIN || "").trim();
+  if (defaultDomainRaw) {
+    const admin = resolveJmapAdminCredentials(
       env as Record<string, string | undefined | null>,
     );
-    if (!relay) {
+    if (!admin) {
       return null;
     }
     return {
@@ -67,9 +67,9 @@ function resolveStalwartJmapWorkerConfig(
       jmapAccountId: "",
       jmapBearerToken: "",
       stalwartImpersonation: {
-        allDomainLower: normalizeMailDomain(allDomainRaw),
-        relayAccountEmail: relay.relayEmail,
-        relayAccountPassword: relay.relayPassword,
+        defaultDomainLower: normalizeMailDomain(defaultDomainRaw),
+        adminEmail: admin.adminEmail,
+        adminPassword: admin.adminPassword,
       },
     };
   }
@@ -244,10 +244,10 @@ async function processPoliticianBatch(
           apiUrl: jmapResolve.config.jmapApiUrl,
           accountId: "",
           basicUsername: buildStalwartImpersonationLogin(
-            imp.relayAccountEmail,
+            imp.adminEmail,
             politician.email,
           ),
-          basicPassword: imp.relayAccountPassword,
+          basicPassword: imp.adminPassword,
         })
       : new JMAPClient({
           apiUrl: jmapResolve.config.jmapApiUrl,
@@ -338,10 +338,10 @@ export async function processReplyImmediately(
         apiUrl: jmapResolve.config.jmapApiUrl,
         accountId: "",
         basicUsername: buildStalwartImpersonationLogin(
-          imp.relayAccountEmail,
+          imp.adminEmail,
           politician.email,
         ),
-        basicPassword: imp.relayAccountPassword,
+        basicPassword: imp.adminPassword,
       })
     : new JMAPClient({
         apiUrl: jmapResolve.config.jmapApiUrl,
@@ -496,8 +496,13 @@ async function processSingleMessage(
 
   const imp = jmapConfig.stalwartImpersonation;
   if (imp) {
-    if (!emailHostedOnDomain(outboundIdentity.fromEmail, imp.allDomainLower)) {
-      const errorMsg = `ALL_DOMAIN is ${imp.allDomainLower} but outbound From is not on that domain`;
+    if (
+      !emailHostedOnDomain(
+        outboundIdentity.fromEmail,
+        imp.defaultDomainLower,
+      )
+    ) {
+      const errorMsg = `DEFAULT_DOMAIN is ${imp.defaultDomainLower} but outbound From is not on that domain`;
       await handleSendFailure(db, message, errorMsg);
       throw new Error(errorMsg);
     }
@@ -512,10 +517,10 @@ async function processSingleMessage(
           apiUrl: jmapConfig.jmapApiUrl,
           accountId: "",
           basicUsername: buildStalwartImpersonationLogin(
-            imp.relayAccountEmail,
+            imp.adminEmail,
             outboundIdentity.fromEmail,
           ),
-          basicPassword: imp.relayAccountPassword,
+          basicPassword: imp.adminPassword,
         })
       : new JMAPClient({
           apiUrl: jmapConfig.jmapApiUrl,
@@ -686,14 +691,14 @@ async function resolveSingleServiceAccountConfig(
   assertNoDynamicCredentialOverrides(mergedBindings as RuntimeSecretBindings);
   const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
   if (!baseConfig) {
-    const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
-      ? " For ALL_DOMAIN mode, set JMAP_URL plus RELAY_SERVICE_ACCOUNT_EMAIL and RELAY_SERVICE_ACCOUNT_PASSWORD."
+    const defaultDomainHint = (mergedBindings.DEFAULT_DOMAIN || "").trim()
+      ? " For JMAP default-domain mode, set JMAP_URL plus JMAP_ADMIN_EMAIL and JMAP_ADMIN_PASSWORD."
       : "";
     return {
       ok: false,
       reason:
-        "Single JMAP relay service account is not configured. Set JMAP_URL (base mail server URL)." +
-        allDomainHint,
+        "Outbound JMAP is not configured. Set JMAP_URL (base mail server URL)." +
+        defaultDomainHint,
     };
   }
 
@@ -711,7 +716,7 @@ async function resolveSingleServiceAccountConfig(
     return {
       ok: false,
       reason:
-        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, RELAY_SERVICE_ACCOUNT_EMAIL, and RELAY_SERVICE_ACCOUNT_PASSWORD.",
+        "Supabase IdP relay auth is required. Set SUPABASE_URL, SUPABASE_ANON_KEY, JMAP_ADMIN_EMAIL, and JMAP_ADMIN_PASSWORD.",
     };
   }
 
