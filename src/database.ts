@@ -1477,6 +1477,8 @@ export class DatabaseClient {
       query = query.limit(filters.limit);
     }
 
+    query = query.order("received_at", { ascending: true });
+
     const { data, error } = await query;
 
     if (error) {
