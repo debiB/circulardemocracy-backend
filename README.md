@@ -449,7 +449,7 @@ npm run jmap-fetch -- [--user <username>] [--password <password>] [options]
 - Fetch scope is Inbox by default; when `--folder` is provided, fetch scope becomes Inbox + that folder.
 - Normal runs automatically move each successfully processed message to a campaign folder in Stalwart.
 - If no campaign match is found, the message is stored with `campaign_id = null` and moved to the `Unclassified` folder.
-- Messages already marked as processed in the database are skipped (idempotent behavior).
+- Messages already marked as unanswered in the database are skipped (idempotent behavior).
 - Dry runs never move messages.
 
 **Examples:**

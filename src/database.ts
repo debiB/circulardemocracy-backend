@@ -13,6 +13,7 @@ export interface Politician {
   id: number;
   name: string;
   email: string;
+  reply_to?: string | null;
   additional_emails: string[];
   active: boolean;
 }
@@ -195,7 +196,7 @@ export class DatabaseClient {
       // First try exact email match
       const { data: exactMatch, error: exactError } = await this.supabase
         .from("politicians")
-        .select("id,name,email,additional_emails,active")
+        .select("id,name,email,reply_to,additional_emails,active")
         .eq("email", email)
         .eq("active", true);
 
@@ -209,7 +210,7 @@ export class DatabaseClient {
       // Then try additional_emails array search
       const { data: arrayMatch, error: arrayError } = await this.supabase
         .from("politicians")
-        .select("id,name,email,additional_emails,active")
+        .select("id,name,email,reply_to,additional_emails,active")
         .contains("additional_emails", [email])
         .eq("active", true);
 
@@ -1457,7 +1458,7 @@ export class DatabaseClient {
       .select(
         "id, external_id, politician_id, campaign_id, sender_hash, reply_scheduled_at, received_at, reply_retry_count",
       )
-      .eq("processing_status", "processed") // Only pick up messages not already being sent or replied
+      .eq("processing_status", "unanswered") // Only pick up messages not already being sent or replied
       .is("reply_sent_at", null)
       .in("campaign_id", campaignIds)
       //      .eq("duplicate_rank", 0)
@@ -1508,10 +1509,11 @@ export class DatabaseClient {
     id: number;
     email: string;
     name: string;
+    reply_to: string | null;
   } | null> {
     const { data, error } = await this.supabase
       .from("politicians")
-      .select("id, email, name")
+      .select("id, email, name, reply_to")
       .eq("id", politicianId)
       .limit(1);
 

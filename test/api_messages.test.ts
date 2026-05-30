@@ -240,7 +240,7 @@ describe("Messages API Integration", () => {
       1,
     );
     const body = (await res.json()) as { status: string; message_id: number };
-    expect(body.status).toBe("processed");
+    expect(body.status).toBe("unanswered");
     expect(body.message_id).toBe(100);
   });
 });

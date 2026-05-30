@@ -421,7 +421,12 @@ async function getMessagesReadyToSend(
 }
 
 interface BatchProcessingContext {
-  politician: { id: number; email: string; name: string };
+  politician: {
+    id: number;
+    email: string;
+    name: string;
+    reply_to: string | null;
+  };
   jmapConfig: WorkerConfig;
   campaignCache?: Map<number, any>;
   templateCache?: Map<number, any>;
@@ -461,9 +466,9 @@ async function processSingleMessage(
     }
     templateCache?.set(message.campaign_id, template);
   }
-
+  console.log("template to use", template);
   // 2. Apply schedule check
-  const replySchedule = await applyReplyScheduleForMessage(db, message.id);
+  /*  const replySchedule = await applyReplyScheduleForMessage(db, message.id);
   if (!replySchedule) {
     const errorMsg = `Message ${message.id} is not eligible for auto-reply`;
     await handleSendFailure(db, message, errorMsg);
@@ -474,9 +479,11 @@ async function processSingleMessage(
     await handleSendFailure(db, message, errorMsg);
     throw new Error(errorMsg);
   }
+*/
 
   // 3. Resolve recipient email
   const jmapEmail = jmapEmailCache?.get(message.external_id);
+  console.log(jmapEmail);
   const senderEmail = jmapEmail?.replyTo || jmapEmail?.from;
   if (!senderEmail) {
     const errorMsg = `Short-term contact email not found for message ${message.id} (JMAP ID ${message.external_id})`;
@@ -485,7 +492,7 @@ async function processSingleMessage(
   }
 
   // 4. Get campaign (cached if in batch)
-  let campaign = campaignCache?.get(message.campaign_id);
+  /*  let campaign = campaignCache?.get(message.campaign_id);
   if (!campaign) {
     campaign = await getCampaignById(db, message.campaign_id);
     if (!campaign) {
@@ -495,6 +502,7 @@ async function processSingleMessage(
     }
     campaignCache?.set(message.campaign_id, campaign);
   }
+*/
 
   // 5. Resolve outbound identity
   const outboundIdentity = resolveOutboundEmailIdentity(
@@ -502,12 +510,14 @@ async function processSingleMessage(
       id: politician.id,
       name: politician.name,
       email: politician.email,
+      reply_to: politician.reply_to,
     },
     {
-      technical_email: campaign.technical_email,
-      reply_to_email: campaign.reply_to_email,
+      technical_email: politician.email,
+      reply_to_email: politician.reply_to || politician.email,
     },
   );
+
   if (!outboundIdentity) {
     const errorMsg = `No From/Reply-To: set campaigns.technical_email and/or politicians.email for campaign ${message.campaign_id}`;
     await handleSendFailure(db, message, errorMsg);
@@ -588,7 +598,7 @@ async function processSingleMessage(
 
 /**
  * Handles send failure by updating retry count or marking as permanently failed.
- * Also resets status from 'sending' back to 'processed' (if retrying) or 'failed'.
+ * Also resets status from 'sending' back to 'unanswered' (if retrying) or 'failed'.
  */
 async function handleSendFailure(
   db: DatabaseClient,
@@ -622,9 +632,9 @@ async function handleSendFailure(
       safeError,
       nextRetryAt,
     );
-    // Reset status to 'processed' so it can be picked up by the next worker run
+    // Reset status to 'unanswered' so it can be picked up by the next worker run
     await db.updateMessageFields(message.id, {
-      processing_status: "processed",
+      processing_status: "unanswered",
     });
 
     console.warn(

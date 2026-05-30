@@ -341,7 +341,7 @@ describe("DatabaseClient", () => {
         language: "en",
         received_at: "2024-01-01T00:00:00Z",
         duplicate_rank: 0,
-        processing_status: "processed",
+        processing_status: "unanswered",
       };
 
       mockFetch.mockResolvedValueOnce(createMockResponse([{ id: 42 }]));

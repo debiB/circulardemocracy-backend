@@ -39,7 +39,7 @@ export interface MessageInput {
 
 export interface MessageProcessingResult {
   success: boolean;
-  status: "processed" | "failed" | "politician_not_found" | "duplicate";
+  status: "unanswered" | "failed" | "politician_not_found" | "duplicate";
   message_id?: number;
   campaign_id?: number;
   campaign_name?: string;
@@ -53,6 +53,8 @@ export interface MessageProcessingResult {
 /**
  * Applies send timing from the campaign's active template when the message is eligible:
  * campaign assigned, duplicate_rank 0, not yet sent. Returns null when no auto-reply applies.
+ *
+ * What the heck is going on here
  */
 export async function applyReplyScheduleForMessage(
   db: DatabaseClient,
@@ -161,7 +163,7 @@ export async function processMessage(
     language: "auto",
     received_at: data.timestamp,
     duplicate_rank: 0,
-    processing_status: isReply ? "followup" : "processed",
+    processing_status: isReply ? "followup" : "unanswered",
     reply_scheduled_at: null,
     sender_flag: data.sender_flag,
     stalwart_message_id: undefined,
@@ -213,7 +215,7 @@ export async function processMessage(
   return {
     success: true,
     message_id: messageId,
-    status: "processed",
+    status: "unanswered",
     campaign_id: classification.campaign_id ?? undefined,
     campaign_name: classification.campaign_name ?? undefined,
     confidence: classification.confidence,

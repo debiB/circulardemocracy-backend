@@ -1016,7 +1016,7 @@ async function getAlreadyProcessedExternalIds(
     .from("messages")
     .select("external_id")
     .eq("channel_source", "stalwart")
-    .eq("processing_status", "processed");
+    .eq("processing_status", "unanswered");
 
   if (politicianId !== undefined) {
     query = query.eq("politician_id", politicianId);

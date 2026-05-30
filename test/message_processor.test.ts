@@ -103,7 +103,7 @@ describe("message_processor", () => {
       duplicate_rank: 0,
       reply_sent_at: null,
       reply_scheduled_at: null,
-      processing_status: "processed",
+      processing_status: "unanswered",
     });
     vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue(null);
     vi.spyOn(mockDb, "insertMessage").mockResolvedValue(100);
@@ -114,7 +114,7 @@ describe("message_processor", () => {
     const result = await processMessage(mockDb, mockAi as any, validInput);
 
     expect(result.success).toBe(true);
-    expect(result.status).toBe("processed");
+    expect(result.status).toBe("unanswered");
     expect(result.message_id).toBe(100);
     expect(result.campaign_id).toBe(10);
     expect(mockDb.insertMessage).toHaveBeenCalled();
