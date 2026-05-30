@@ -11,10 +11,8 @@ import {
 } from "../src/cli_shared.js";
 import {
   processScheduledReplies,
-processReplyImmediately,
+replyMessage,
   type ProcessingResult,
-
-
 } from "../src/reply_worker.js";
 
 dotenv({ quiet: true });
@@ -81,7 +79,7 @@ async function processFilteredReplies(
 ): Promise<ProcessingResult> {
   if (options.messageId !== undefined && options.politicianId !== undefined) {
     console.log(`Processing specific message: ${options.messageId} for ${options.politicianId}`);
-    return processReplyImmediately(db, 
+    return replyMessage(db, 
       options.messageId, options.politicianId, runtimeSecrets);
   }
 

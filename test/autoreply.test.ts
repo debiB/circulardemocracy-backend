@@ -267,6 +267,22 @@ describe("Email Layout", () => {
       expect(result.htmlBody).toContain("&lt;script&gt;");
     });
   });
+
+  describe("EP layout", () => {
+    it("should include EU flag and politician name", () => {
+      const result = renderEmailLayout({
+        subject: "Test Subject",
+        markdown_body: "Content",
+        layout_type: "EP",
+        politician_name: "John Doe",
+      });
+
+      expect(result.htmlBody).toContain("🇪🇺");
+      expect(result.htmlBody).toContain("Member of the European Parliament: John Doe");
+      expect(result.textBody).toContain("🇪🇺");
+      expect(result.textBody).toContain("Member of the European Parliament: John Doe");
+    });
+  });
 });
 
 // =============================================================================
@@ -449,7 +465,7 @@ describe("Template Service", () => {
       const result = await updateReplyTemplate(mockDb, 10, { active: true });
 
       expect(result.success).toBe(true);
-      expect(mockDb.deactivateOtherTemplates).toHaveBeenCalledWith(1, 10);
+      expect(mockDb.deactivateOtherTemplates).toHaveBeenCalledWith(1, 1, 10);
     });
   });
 });

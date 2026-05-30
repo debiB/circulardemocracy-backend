@@ -315,7 +315,7 @@ async function processPoliticianBatch(
   }
 }
 
-export async function processReplyImmediately(
+export async function replyMessage(
   db: DatabaseClient,
   messageId: string,
   politicianId: number,
@@ -335,7 +335,14 @@ export async function processReplyImmediately(
       politicianId,
     );
     if (!message) {
-      throw new Error(`Message ${message} not eligible for immediate reply`);
+      throw new Error(
+        `Message ${messageId} not found for politician ${politicianId}`,
+      );
+    }
+
+    const politician = await getPoliticianById(db, politicianId);
+    if (!politician) {
+      throw new Error(`Politician ${politicianId} not found`);
     }
 
     // Still resolve auth per immediate call (CLI/Web-hook context)
@@ -344,13 +351,8 @@ export async function processReplyImmediately(
       throw new Error(jmapResolve.reason);
     }
 
-    const politician = await getPoliticianById(db, politicianId);
-    if (!politician) {
-      throw new Error(`Politician ${politicianId} not found`);
-    }
-
-    const imp = jmapResolve.config.stalwartImpersonation; //do we need to redefined that?)
-    const jmapClientForFetch = imp
+    const imp = jmapResolve.config.stalwartImpersonation;
+    const server = imp
       ? new JMAPClient({
           apiUrl: jmapResolve.config.jmapApiUrl,
           accountId: "",
@@ -366,7 +368,7 @@ export async function processReplyImmediately(
           bearerToken: jmapResolve.config.jmapBearerToken,
         });
 
-    const emails = await jmapClientForFetch.getEmails([message.external_id]);
+    const emails = await server.getEmails([message.external_id]);
     const jmapEmail = emails.get(message.external_id);
     if (!jmapEmail) {
       throw new Error(
@@ -375,11 +377,23 @@ export async function processReplyImmediately(
     }
     console.log(jmapEmail);
     const fetchClientKey = imp ? `imp:${politician.email}` : "relay:default";
-    await processSingleMessage(db, message, {
+
+    const messageToProcess: MessageToProcess = {
+      id: message.id,
+      external_id: message.external_id,
+      politician_id: message.politician_id,
+      campaign_id: message.campaign_id,
+      sender_hash: message.sender_hash,
+      reply_scheduled_at: message.reply_scheduled_at || null,
+      received_at: message.received_at,
+      reply_retry_count: (message as any).reply_retry_count ?? 0,
+    };
+
+    await processSingleMessage(db, messageToProcess, {
       politician,
       jmapConfig: jmapResolve.config,
       jmapEmailCache: new Map([[message.external_id, jmapEmail]]),
-      jmapClientCache: new Map([[fetchClientKey, jmapClientForFetch]]),
+      jmapClientCache: new Map([[fetchClientKey, server]]),
     });
 
     result.sent = 1;
@@ -492,7 +506,7 @@ async function processSingleMessage(
   }
 
   // 4. Get campaign (cached if in batch)
-  /*  let campaign = campaignCache?.get(message.campaign_id);
+  let campaign = campaignCache?.get(message.campaign_id);
   if (!campaign) {
     campaign = await getCampaignById(db, message.campaign_id);
     if (!campaign) {
@@ -502,7 +516,6 @@ async function processSingleMessage(
     }
     campaignCache?.set(message.campaign_id, campaign);
   }
-*/
 
   // 5. Resolve outbound identity
   const outboundIdentity = resolveOutboundEmailIdentity(
@@ -693,6 +706,7 @@ async function getPoliticianById(
   id: number;
   email: string;
   name: string;
+  reply_to: string | null;
 } | null> {
   try {
     return await db.getPoliticianById(politicianId);

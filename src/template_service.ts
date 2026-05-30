@@ -14,7 +14,7 @@ export interface CreateTemplateInput {
   name: string;
   subject: string;
   body: string;
-  layout_type: "text_only" | "standard_header";
+  layout_type: "text_only" | "standard_header" | "EP";
   send_timing: "immediate" | "office_hours" | "scheduled";
   scheduled_for?: string;
   active: boolean;
@@ -24,7 +24,7 @@ export interface UpdateTemplateInput {
   name?: string;
   subject?: string;
   body?: string;
-  layout_type?: "text_only" | "standard_header";
+  layout_type?: "text_only" | "standard_header" | "EP";
   send_timing?: "immediate" | "office_hours" | "scheduled";
   scheduled_for?: string;
   active?: boolean;
@@ -95,7 +95,10 @@ export async function createReplyTemplate(
 
     // If this template is being set as active, deactivate other templates for this campaign
     if (payload.active) {
-      await db.deactivateOtherTemplates(payload.campaign_id, payload.politician_id);
+      await db.deactivateOtherTemplates(
+        payload.campaign_id,
+        payload.politician_id,
+      );
     }
 
     // Create the template using Supabase client

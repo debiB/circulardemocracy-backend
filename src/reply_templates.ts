@@ -37,7 +37,7 @@ const ReplyTemplateSchema = z.object({
   subject: z.string(),
   body: z.string().describe("Markdown formatted email body"),
   active: z.boolean(),
-  layout_type: z.enum(["text_only", "standard_header"]),
+  layout_type: z.enum(["text_only", "standard_header", "EP"]),
   send_timing: z.enum(["immediate", "office_hours", "scheduled"]),
   scheduled_for: z.string().datetime().nullable().optional(),
   created_at: z.string().datetime(),
@@ -51,7 +51,7 @@ const CreateReplyTemplateSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(255),
   body: z.string().min(10, "Message body must be at least 10 characters"),
   layout_type: z
-    .enum(["text_only", "standard_header"])
+    .enum(["text_only", "standard_header", "EP"])
     .default("standard_header"),
   send_timing: z
     .enum(["immediate", "office_hours", "scheduled"])
@@ -64,7 +64,7 @@ const UpdateReplyTemplateSchema = z.object({
   name: z.string().min(3).optional(),
   subject: z.string().min(1).max(255).optional(),
   body: z.string().min(10).optional(),
-  layout_type: z.enum(["text_only", "standard_header"]).optional(),
+  layout_type: z.enum(["text_only", "standard_header", "EP"]).optional(),
   send_timing: z.enum(["immediate", "office_hours", "scheduled"]).optional(),
   scheduled_for: z.string().datetime().optional(),
   active: z.boolean().optional(),
