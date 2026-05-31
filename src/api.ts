@@ -94,8 +94,7 @@ export async function handleScheduledEvent(env: Env): Promise<void> {
       key: env.SUPABASE_KEY,
     });
 
-    const runtimeSecrets = env as unknown as Record<string, string | undefined>;
-    const result = await processScheduledReplies(db, runtimeSecrets);
+    const result = await processScheduledReplies(db, env);
 
     console.log("[Reply Worker] Processing complete:", {
       total: result.total,

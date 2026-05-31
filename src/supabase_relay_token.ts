@@ -1,4 +1,4 @@
-type RuntimeSecretBindings = Record<string, string | undefined>;
+import type { MailSendBindings } from "./reply_worker";
 
 interface TokenState {
   accessToken: string | null;
@@ -11,7 +11,7 @@ const tokenState: TokenState = {
 };
 
 export async function getSupabaseRelayAccessToken(
-  env: RuntimeSecretBindings,
+  env: MailSendBindings,
 ): Promise<string | null> {
   const now = Date.now();
   if (tokenState.accessToken && now < tokenState.expiresAtMs - 30_000) {

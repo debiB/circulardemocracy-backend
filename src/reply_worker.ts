@@ -79,22 +79,7 @@ function resolveStalwartJmapWorkerConfig(
   };
 }
 
-type RuntimeSecretBindings = Record<string, string | undefined>;
-const FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS = [
-  "POLITICIAN_JMAP_EMAIL",
-  "POLITICIAN_JMAP_PASSWORD",
-  "POLITICIAN_JMAP_TOKEN",
-  "POLITICIAN_JMAP_ACCOUNT_ID",
-  "STALWART_JMAP_EMAIL",
-  "STALWART_JMAP_PASSWORD",
-  "STALWART_JMAP_USERNAME",
-  "STALWART_JMAP_TOKEN",
-] as const;
 
-const processEnv: Record<string, string | undefined> | undefined =
-  typeof process !== "undefined" && process.env
-    ? (process.env as Record<string, string | undefined>)
-    : undefined;
 
 export interface MessageToProcess {
   id: number;
@@ -124,7 +109,7 @@ interface SendContext {
  */
 export async function processScheduledReplies(
   db: DatabaseClient,
-  runtimeSecrets?: RuntimeSecretBindings,
+  bindings: MailSendBindings,
   filters: {
     politicianId?: number;
     campaignId?: number;
@@ -172,7 +157,7 @@ export async function processScheduledReplies(
         db,
         politicianId,
         batch,
-        runtimeSecrets,
+        bindings,
       );
 
       result.sent += politicianResult.sent;
@@ -199,7 +184,7 @@ async function processPoliticianBatch(
   db: DatabaseClient,
   politicianId: number,
   messages: MessageToProcess[],
-  runtimeSecrets?: RuntimeSecretBindings,
+  bindings: MailSendBindings,
 ): Promise<ProcessingResult> {
   const result: ProcessingResult = {
     total: messages.length,
@@ -227,7 +212,7 @@ async function processPoliticianBatch(
     const jmapEmailCache = new Map<string, EmailMessage>();
 
     // Resolve JMAP config once for this politician
-    const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
+    const jmapResolve = await resolveSingleServiceAccountConfig(bindings);
     if (!jmapResolve.ok) {
       const errorMsg = jmapResolve.reason;
       for (const msg of messages) {
@@ -306,7 +291,7 @@ export async function replyMessage(
   db: DatabaseClient,
   messageId: string,
   politicianId: number,
-  runtimeSecrets?: RuntimeSecretBindings,
+  bindings: MailSendBindings,
 ): Promise<ProcessingResult> {
   const result: ProcessingResult = {
     total: 1,
@@ -335,7 +320,7 @@ export async function replyMessage(
     }
 
     // Still resolve auth per immediate call (CLI/Web-hook context)
-    const jmapResolve = await resolveSingleServiceAccountConfig(runtimeSecrets);
+    const jmapResolve = await resolveSingleServiceAccountConfig(bindings);
     if (!jmapResolve.ok) {
       throw new Error(jmapResolve.reason);
     }
@@ -716,16 +701,11 @@ type JmapResolveResult =
   | { ok: false; reason: string };
 
 async function resolveSingleServiceAccountConfig(
-  runtimeSecrets?: RuntimeSecretBindings,
+  bindings: MailSendBindings,
 ): Promise<JmapResolveResult> {
-  const mergedBindings: MailSendBindings = {
-    ...(processEnv || {}),
-    ...(runtimeSecrets || {}),
-  };
-  assertNoDynamicCredentialOverrides(mergedBindings as RuntimeSecretBindings);
-  const baseConfig = resolveStalwartJmapWorkerConfig(mergedBindings);
+  const baseConfig = resolveStalwartJmapWorkerConfig(bindings);
   if (!baseConfig) {
-    const allDomainHint = (mergedBindings.ALL_DOMAIN || "").trim()
+    const allDomainHint = (bindings.ALL_DOMAIN || "").trim()
       ? " For ALL_DOMAIN mode, set JMAP_URL plus RELAY_SERVICE_ACCOUNT_EMAIL and RELAY_SERVICE_ACCOUNT_PASSWORD."
       : "";
     return {
@@ -743,9 +723,7 @@ async function resolveSingleServiceAccountConfig(
     };
   }
 
-  const relayToken = await getSupabaseRelayAccessToken(
-    mergedBindings as RuntimeSecretBindings,
-  );
+  const relayToken = await getSupabaseRelayAccessToken(bindings);
   if (!relayToken) {
     return {
       ok: false,
@@ -788,17 +766,6 @@ async function fetchAndResolveMailAccountIdFromSession(
     accounts?: Record<string, unknown>;
   };
   return resolveMailAccountIdFromSession(session);
-}
-
-function assertNoDynamicCredentialOverrides(env: RuntimeSecretBindings): void {
-  const forbidden = FORBIDDEN_DYNAMIC_CREDENTIAL_ENV_KEYS.filter(
-    (key) => (env[key] || "").trim().length > 0,
-  );
-  if (forbidden.length > 0) {
-    throw new Error(
-      "Dynamic/per-entity outbound credentials are forbidden; use only the single relay account configuration.",
-    );
-  }
 }
 
 function sanitizeErrorMessage(raw: string): string {
