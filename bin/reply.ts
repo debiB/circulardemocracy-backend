@@ -12,7 +12,6 @@ import {
 import {
   processScheduledReplies,
 replyMessage,
-  type MailSendBindings,
   type ProcessingResult,
 } from "../src/reply_worker.js";
 
@@ -78,12 +77,11 @@ export function parseArgs(args: string[]): CliFilters  {
 async function processFilteredReplies(
   db: DatabaseClient,
   options: CliFilters,
-  bindings: MailSendBindings,
 ): Promise<ProcessingResult> {
   if (options.messageId !== undefined && options.politicianId !== undefined) {
     console.log(`Processing specific message: ${options.messageId} for ${options.politicianId}`);
     return replyMessage(db, 
-      options.messageId, options.politicianId, bindings);
+      options.messageId, options.politicianId);
   }
 
   const campaignId = await resolveCampaignId(db, options);
@@ -95,7 +93,7 @@ async function processFilteredReplies(
     limit: options.limit,
   });
 
-  return processScheduledReplies(db, bindings, {
+  return processScheduledReplies(db, {
     campaignId,
     politicianId,
     limit: options.limit,
@@ -202,21 +200,12 @@ async function main(): Promise<void> {
 
   try {
     const db = new DatabaseClientImpl({ url: supabaseUrl, key: supabaseKey });
-    const bindings: MailSendBindings = {
-      JMAP_URL: process.env.JMAP_URL,
-      SUPABASE_URL: process.env.SUPABASE_URL,
-      SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-      RELAY_SERVICE_ACCOUNT_EMAIL: process.env.RELAY_SERVICE_ACCOUNT_EMAIL,
-      RELAY_SERVICE_ACCOUNT_PASSWORD: process.env.RELAY_SERVICE_ACCOUNT_PASSWORD,
-      ALL_DOMAIN: process.env.ALL_DOMAIN,
-    };
-
     if (options.dryRun) {
       await previewReadyReplies(db, options);
       return;
     }
 
-    const result = await processFilteredReplies(db, options, bindings);
+    const result = await processFilteredReplies(db, options);
     console.log(JSON.stringify(result, null, 2));
 
     if (result.failed > 0) {

@@ -94,7 +94,7 @@ export async function handleScheduledEvent(env: Env): Promise<void> {
       key: env.SUPABASE_KEY,
     });
 
-    const result = await processScheduledReplies(db, env);
+    const result = await processScheduledReplies(db);
 
     console.log("[Reply Worker] Processing complete:", {
       total: result.total,

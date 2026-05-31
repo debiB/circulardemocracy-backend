@@ -41,21 +41,19 @@ export type MailSendBindings = {
   ALL_DOMAIN?: string;
 };
 
-function resolveStalwartJmapWorkerConfig(
-  env: MailSendBindings,
-): WorkerConfig | null {
+function resolveStalwartJmapWorkerConfig(): WorkerConfig | null {
   const jmapApiUrl =
     jmapWellKnownSessionUrl(
-      env as Record<string, string | undefined | null>,
+      process.env as Record<string, string | undefined | null>,
     )?.trim() ?? "";
   if (!jmapApiUrl) {
     return null;
   }
 
-  const allDomainRaw = (env.ALL_DOMAIN || "").trim();
+  const allDomainRaw = (process.env.ALL_DOMAIN || "").trim();
   if (allDomainRaw) {
     const relay = resolveRelayImpersonationCredentials(
-      env as Record<string, string | undefined | null>,
+      process.env as Record<string, string | undefined | null>,
     );
     if (!relay) {
       return null;
@@ -109,7 +107,6 @@ interface SendContext {
  */
 export async function processScheduledReplies(
   db: DatabaseClient,
-  bindings: MailSendBindings,
   filters: {
     politicianId?: number;
     campaignId?: number;
@@ -157,7 +154,6 @@ export async function processScheduledReplies(
         db,
         politicianId,
         batch,
-        bindings,
       );
 
       result.sent += politicianResult.sent;
@@ -184,7 +180,6 @@ async function processPoliticianBatch(
   db: DatabaseClient,
   politicianId: number,
   messages: MessageToProcess[],
-  bindings: MailSendBindings,
 ): Promise<ProcessingResult> {
   const result: ProcessingResult = {
     total: messages.length,
@@ -212,7 +207,7 @@ async function processPoliticianBatch(
     const jmapEmailCache = new Map<string, EmailMessage>();
 
     // Resolve JMAP config once for this politician
-    const jmapResolve = await resolveSingleServiceAccountConfig(bindings);
+    const jmapResolve = await resolveSingleServiceAccountConfig();
     if (!jmapResolve.ok) {
       const errorMsg = jmapResolve.reason;
       for (const msg of messages) {
@@ -291,7 +286,6 @@ export async function replyMessage(
   db: DatabaseClient,
   messageId: string,
   politicianId: number,
-  bindings: MailSendBindings,
 ): Promise<ProcessingResult> {
   const result: ProcessingResult = {
     total: 1,
@@ -320,7 +314,7 @@ export async function replyMessage(
     }
 
     // Still resolve auth per immediate call (CLI/Web-hook context)
-    const jmapResolve = await resolveSingleServiceAccountConfig(bindings);
+    const jmapResolve = await resolveSingleServiceAccountConfig();
     if (!jmapResolve.ok) {
       throw new Error(jmapResolve.reason);
     }
@@ -700,12 +694,10 @@ type JmapResolveResult =
   | { ok: true; config: WorkerConfig }
   | { ok: false; reason: string };
 
-async function resolveSingleServiceAccountConfig(
-  bindings: MailSendBindings,
-): Promise<JmapResolveResult> {
-  const baseConfig = resolveStalwartJmapWorkerConfig(bindings);
+async function resolveSingleServiceAccountConfig(): Promise<JmapResolveResult> {
+  const baseConfig = resolveStalwartJmapWorkerConfig();
   if (!baseConfig) {
-    const allDomainHint = (bindings.ALL_DOMAIN || "").trim()
+    const allDomainHint = (process.env.ALL_DOMAIN || "").trim()
       ? " For ALL_DOMAIN mode, set JMAP_URL plus RELAY_SERVICE_ACCOUNT_EMAIL and RELAY_SERVICE_ACCOUNT_PASSWORD."
       : "";
     return {
@@ -723,7 +715,7 @@ async function resolveSingleServiceAccountConfig(
     };
   }
 
-  const relayToken = await getSupabaseRelayAccessToken(bindings);
+  const relayToken = await getSupabaseRelayAccessToken();
   if (!relayToken) {
     return {
       ok: false,

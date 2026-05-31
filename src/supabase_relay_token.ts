@@ -1,5 +1,3 @@
-import type { MailSendBindings } from "./reply_worker";
-
 interface TokenState {
   accessToken: string | null;
   expiresAtMs: number;
@@ -10,18 +8,16 @@ const tokenState: TokenState = {
   expiresAtMs: 0,
 };
 
-export async function getSupabaseRelayAccessToken(
-  env: MailSendBindings,
-): Promise<string | null> {
+export async function getSupabaseRelayAccessToken(): Promise<string | null> {
   const now = Date.now();
   if (tokenState.accessToken && now < tokenState.expiresAtMs - 30_000) {
     return tokenState.accessToken;
   }
 
-  const supabaseUrl = String(env.SUPABASE_URL || "").trim();
-  const supabaseAnonKey = String(env.SUPABASE_ANON_KEY || "").trim();
-  const relayEmail = String(env.RELAY_SERVICE_ACCOUNT_EMAIL || "").trim();
-  const relayPassword = String(env.RELAY_SERVICE_ACCOUNT_PASSWORD || "").trim();
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+  const supabaseAnonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+  const relayEmail = String(process.env.RELAY_SERVICE_ACCOUNT_EMAIL || "").trim();
+  const relayPassword = String(process.env.RELAY_SERVICE_ACCOUNT_PASSWORD || "").trim();
 
   if (!supabaseUrl || !supabaseAnonKey || !relayEmail || !relayPassword) {
     return null;

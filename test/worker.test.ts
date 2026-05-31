@@ -10,7 +10,20 @@ import {
 // =============================================================================
 
 describe("Reply Worker", () => {
-  const runtimeSecrets = {
+  // Set env vars for functions that now read process.env directly
+  const origEnv = { ...process.env };
+  Object.assign(process.env, {
+    JMAP_URL: "https://jmap.example.com",
+    SUPABASE_URL: "https://test.supabase.co",
+    SUPABASE_ANON_KEY: "anon-key",
+    RELAY_SERVICE_ACCOUNT_EMAIL: "relay@example.com",
+    RELAY_SERVICE_ACCOUNT_PASSWORD: "relay-pass",
+    ALL_DOMAIN: "",
+  });
+
+  afterAll(() => {
+    Object.assign(process.env, origEnv);
+  });
     JMAP_URL: "https://jmap.example.com",
     SUPABASE_URL: "https://test.supabase.co",
     SUPABASE_ANON_KEY: "anon-key",
@@ -308,7 +321,7 @@ describe("Reply Worker", () => {
       vi.spyOn(mockDb, "getActiveTemplateForCampaign").mockResolvedValue(null);
       vi.spyOn(mockDb, "updateMessageRetryCount").mockResolvedValue(undefined);
 
-      const result = await processScheduledReplies(mockDb, runtimeSecrets);
+      const result = await processScheduledReplies(mockDb);
 
       expect(result.failed).toBe(1);
       expect(mockDb.updateMessageRetryCount).toHaveBeenCalledWith(
@@ -358,7 +371,7 @@ describe("Reply Worker", () => {
       vi.spyOn(mockDb, "markMessageAsFailed").mockResolvedValue(undefined);
       vi.spyOn(mockDb, "updateMessageRetryCount").mockResolvedValue(undefined);
 
-      const result = await processScheduledReplies(mockDb, runtimeSecrets);
+      const result = await processScheduledReplies(mockDb);
 
       expect(result.failed).toBe(1);
       expect(mockDb.markMessageAsFailed).toHaveBeenCalledWith(
@@ -561,7 +574,7 @@ describe("Reply Worker", () => {
         },
       );
 
-      const result = await processScheduledReplies(mockDb, runtimeSecrets);
+      const result = await processScheduledReplies(mockDb);
 
       expect(result.sent).toBe(1);
       expect(mockDb.markMessageReplyDelivered).toHaveBeenCalledWith(1);
@@ -667,7 +680,7 @@ describe("Reply Worker", () => {
         },
       );
 
-      const result = await processScheduledReplies(mockDb, runtimeSecrets);
+      const result = await processScheduledReplies(mockDb);
 
       expect(result.sent).toBe(1);
       expect(JMAPClient.prototype.sendEmail).toHaveBeenCalledWith(
@@ -786,7 +799,7 @@ describe("Reply Worker", () => {
         },
       );
 
-      const result = await processScheduledReplies(mockDb, runtimeSecrets);
+      const result = await processScheduledReplies(mockDb);
 
       expect(result.failed).toBe(1);
       expect(result.errors[0].error).toContain("No From/Reply-To");
@@ -885,7 +898,7 @@ describe("Reply Worker", () => {
         return {} as any;
       }) as (...args: unknown[]) => unknown);
 
-      const result = await processReplyImmediately(mockDb, 404, runtimeSecrets);
+      const result = await processReplyImmediately(mockDb, 404);
       expect(result.failed).toBe(1);
       expect(result.errors[0].error).toMatch(/not eligible/);
       expect(mockDb.markMessageReplyDelivered).not.toHaveBeenCalled();
@@ -1000,7 +1013,7 @@ describe("Reply Worker", () => {
         },
       );
 
-      const result = await processReplyImmediately(mockDb, 42, runtimeSecrets);
+      const result = await processReplyImmediately(mockDb, 42);
 
       expect(result.sent).toBe(1);
       expect(mockDb.markMessageReplyDelivered).toHaveBeenCalledWith(42);
