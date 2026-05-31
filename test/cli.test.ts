@@ -277,7 +277,7 @@ describe("CLI Argument Parsing", () => {
     });
   });
 
-  describe("jmap-fetch CLI - parseStalwartArgs", () => {
+  describe("fetch CLI - parseStalwartArgs", () => {
     it("should parse --process-all flag", () => {
       const args = ["--process-all"];
 
@@ -561,7 +561,7 @@ describe("CLI Argument Parsing", () => {
     });
   });
 
-  describe("jmap-fetch CLI - user and password parsing", () => {
+  describe("fetch CLI - user and password parsing", () => {
     it("should parse --user and --password flags", () => {
       const args = [
         "--user",
@@ -625,9 +625,9 @@ describe("CLI Argument Parsing", () => {
     });
   });
 
-  describe("send-replies CLI - parseArgs", () => {
+  describe("reply CLI - parseArgs", () => {
     it("should return empty options with no args", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       const result = parseArgs([]);
       expect(result).toEqual({
         campaignId: undefined,
@@ -641,7 +641,7 @@ describe("CLI Argument Parsing", () => {
     });
 
     it("should parse --dry-run flag", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       const result = parseArgs(["--dry-run"]);
       expect(result).toEqual({
         campaignId: undefined,
@@ -655,12 +655,12 @@ describe("CLI Argument Parsing", () => {
     });
 
     it("should return null for help", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       expect(parseArgs(["--help"])).toBeNull();
     });
 
     it("should parse campaign-id", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       const result = parseArgs(["--campaign-id", "5"]);
       expect(result).toEqual({
         campaignId: 5,
@@ -674,7 +674,7 @@ describe("CLI Argument Parsing", () => {
     });
 
     it("should parse campaign-name", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       const result = parseArgs(["--campaign-name", "Climate"]);
       expect(result).toEqual({
         campaignId: undefined,
@@ -688,7 +688,7 @@ describe("CLI Argument Parsing", () => {
     });
 
     it("should parse politician-id and limit", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       const result = parseArgs(["--politician-id", "10", "--limit", "5"]);
       expect(result).toEqual({
         campaignId: undefined,
@@ -702,7 +702,7 @@ describe("CLI Argument Parsing", () => {
     });
 
     it("should parse message ID", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       const result = parseArgs(["--message", "123"]);
       expect(result).toEqual({
         campaignId: undefined,
@@ -716,12 +716,12 @@ describe("CLI Argument Parsing", () => {
     });
 
     it("should reject limit without politician-id", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       expect(() => parseArgs(["--limit", "5"])).toThrow("process.exit(1)");
     });
 
     it("should reject both campaign-id and campaign-name", async () => {
-      const { parseArgs } = await import("../bin/send-replies.js");
+      const { parseArgs } = await import("../bin/reply.js");
       expect(() =>
         parseArgs(["--campaign-id", "1", "--campaign-name", "Climate"]),
       ).toThrow("process.exit(1)");

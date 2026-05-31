@@ -157,13 +157,13 @@ export async function previewReadyReplies(
 
 function printUsage() {
   console.log(`
-Send Replies - Test outbound auto-replies using the production reply worker
+Reply - Send outbound auto-replies using the production reply worker
 
 USAGE:
-  send-replies
-  send-replies [--campaign-id <id> | --campaign-name <hint>]
-  send-replies [--politician-id <id> | --politician-name <hint>] [--limit <n>]
-  send-replies [--message <id>]
+  reply
+  reply [--campaign-id <id> | --campaign-name <hint>]
+  reply [--politician-id <id> | --politician-name <hint>] [--limit <n>]
+  reply [--message <id>]
 
 OPTIONS:
   --campaign-id <id>      Filter by campaign (numeric id)

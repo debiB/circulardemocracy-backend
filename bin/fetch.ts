@@ -207,11 +207,11 @@ function logAllDomainMailboxes(
 
 function printUsage() {
   console.log(`
-JMAP Fetch - Automated ingestion from Stalwart mail server
+Fetch - Automated ingestion from Stalwart mail server
 
 USAGE:
-  jmap-fetch [--user <username>] [--password <password>] [options]
-  jmap-fetch [--politician-id <id> | --politician-name <hint>] [options]
+  fetch [--user <username>] [--password <password>] [options]
+  fetch [--politician-id <id> | --politician-name <hint>] [options]
 
 OPTIONS:
   --user <username>      JMAP mailbox email (default: JMAP_SERVICE_ACCOUNT_EMAIL env)
@@ -240,10 +240,10 @@ ENVIRONMENT VARIABLES:
   SUPABASE_KEY           Required Supabase key
 
 EXAMPLES:
-  jmap-fetch --process-all
-  jmap-fetch --since "2024-03-01"
-  jmap-fetch --politician-id 123
-  jmap-fetch --user dibora --password mypass --process-all
+  fetch --process-all
+  fetch --since "2024-03-01"
+  fetch --politician-id 123
+  fetch --user dibora --password mypass --process-all
 `);
 }
 

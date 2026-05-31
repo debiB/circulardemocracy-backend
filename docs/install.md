@@ -69,7 +69,7 @@ Set `JMAP_URL`, `RELAY_SERVICE_ACCOUNT_EMAIL`, and `RELAY_SERVICE_ACCOUNT_PASSWO
 ### Reply sends (brief)
 
 
-- Production sends run on the Cloudflare cron reply worker; locally use `npx tsx bin/cli send-replies`.
+- Production sends run on the Cloudflare cron reply worker; locally use `npx tsx bin/cli reply`.
 - Each `messages` row is sent at most once by the worker: after success, `reply_sent_at` is set.
 
 - Inbound auto-replies are only scheduled for the first message per supporter + campaign (`duplicate_rank === 0`); see README “Reply deduplication and persistence” for full detail.
@@ -108,10 +108,10 @@ npx tsx bin/cli --help
 npm run mail -- --help
 
 # JMAP email ingestion from Stalwart
-npm run jmap-fetch -- --help
+npm run fetch -- --help
 
 # Test outbound auto-replies (same path as cron; not an HTTP API)
-npx tsx bin/cli send-replies --help
+npx tsx bin/cli reply --help
 ```
 
 ## API Key Setup
