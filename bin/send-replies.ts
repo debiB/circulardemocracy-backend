@@ -30,11 +30,13 @@ export function parseArgs(args: string[]): CliFilters  {
       if (d[0] !== "-" ) return true;
       if (allowed.includes(d.split("=")[0].slice(2))) return true;
       console.error("unknown param", d);
+      return false;
     },
   });
 
   if (argv.help) {
-    return null;
+    printUsage();
+    process.exit(1);
   }
 
   const campaignId = argv["campaign-id"];

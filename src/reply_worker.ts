@@ -3,8 +3,6 @@
 
 import type { DatabaseClient } from "./database";
 import { resolveOutboundEmailIdentity } from "./email_impersonation";
-import { applyReplyScheduleForMessage } from "./message_processor";
-import { isReadyToSend } from "./scheduling";
 import { renderEmailLayout } from "./email_layout";
 import {
   type EmailMessage,
@@ -474,7 +472,7 @@ async function processSingleMessage(
   const jmapEmail = jmapEmailCache?.get(message.external_id);
   const senderEmail = jmapEmail?.replyTo || jmapEmail?.from;
   if (!senderEmail) {
-    const errorMsg = `Short-term contact email not found for message ${message.id} (JMAP ID ${message.external_id})`;
+    const errorMsg = `sender not found for message ${message.id} (JMAP ID ${message.external_id})`;
     await handleSendFailure(db, message, errorMsg);
     throw new Error(errorMsg);
   }
@@ -528,8 +526,6 @@ async function processSingleMessage(
     jmapClientCache?.set(clientKey, jmapClient);
   }
 
-  const sendContext = await buildSendContext(db, message, outboundIdentity);
-
   // 7. Resolve template tokens
   const tokens = {
     subject: jmapEmail?.subject || "",
@@ -565,15 +561,16 @@ async function processSingleMessage(
   };
 
   // Add threading headers if we have the original message-id
-  if (jmapEmail?.headerMessageId) {
-    email.inReplyTo = [jmapEmail.headerMessageId];
-    email.references = [jmapEmail.headerMessageId];
+  if (jmapEmail?.messageId) {
+    email.inReplyTo = jmapEmail.messageId;
+    email.references = jmapEmail.messageId;
   }
 
   // 9. Send via JMAP
   const sendResult = await jmapClient.sendEmail(email);
 
   if (!sendResult.success) {
+    console.log(sendResult);
     const errorMsg = "JMAP send failed";
     console.error(
       `[Reply Worker] ✗ Failed to send reply for message ${message.id}: ${errorMsg}`,

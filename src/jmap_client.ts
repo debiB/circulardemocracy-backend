@@ -41,14 +41,14 @@ export interface EmailMessage {
   subject: string;
   textBody?: string;
   htmlBody?: string;
-  /** The value of the Message-ID header of this email. */
-  headerMessageId?: string;
   /** The value for the In-Reply-To header. */
   inReplyTo?: string[];
   /** The value for the References header. */
   references?: string[];
   /** The date the message was received. */
   receivedAt?: string;
+  sentAt?: string;
+  messageId?: [string];
 }
 
 export interface JMAPSendResult {
@@ -405,7 +405,7 @@ export class JMAPClient {
 
       throw new Error("Unexpected JMAP response format");
     } catch (_error) {
-      console.error("JMAP send failed");
+      console.error("JMAP send failed", _error);
       return {
         success: false,
         error: "JMAP send failed",
@@ -436,12 +436,8 @@ export class JMAPClient {
     }
 
     // Add threading headers
-    if (email.inReplyTo && email.inReplyTo.length > 0) {
-      emailObj["header:In-Reply-To:asString"] = email.inReplyTo.join(" ");
-    }
-    if (email.references && email.references.length > 0) {
-      emailObj["header:References:asString"] = email.references.join(" ");
-    }
+    emailObj.inReplyTo = email.inReplyTo;
+    emailObj.references = email.references;
 
     // Build body parts
     const bodyParts: any[] = [];
@@ -518,7 +514,8 @@ export class JMAPClient {
               "replyTo",
               "subject",
               "receivedAt",
-              "header:Message-ID:asString",
+              "sentAt",
+              "messageId",
             ],
           },
           "emailsGet",
@@ -547,7 +544,8 @@ export class JMAPClient {
           to: [], // Not needed for our lookup
           replyTo: replyTo?.email || undefined,
           subject: item.subject || "",
-          headerMessageId: item["header:Message-ID:asString"],
+          messageId: item.messageId,
+          sentAt: item.sentAt,
           receivedAt: item.receivedAt,
         });
       }
