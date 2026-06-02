@@ -1161,15 +1161,26 @@ export class DatabaseClient {
   }
 
   /** Sets message reply fields after successful send. */
-  async markMessageReplyDelivered(messageId: number): Promise<void> {
+  async markMessageReplyDelivered(
+    messageId: number,
+    options?: { reply_id?: string; reply_template_id?: number },
+  ): Promise<void> {
     const replySentAt = new Date().toISOString();
+    const updateData: Record<string, string | number | null> = {
+      reply_sent_at: replySentAt,
+      processing_status: "replied",
+    };
+
+    if (options?.reply_id !== undefined) {
+      updateData.reply_id = options.reply_id;
+    }
+    if (options?.reply_template_id !== undefined) {
+      updateData.reply_template_id = options.reply_template_id;
+    }
 
     const { error: msgError } = await this.supabase
       .from("messages")
-      .update({
-        reply_sent_at: replySentAt,
-        processing_status: "replied",
-      })
+      .update(updateData)
       .eq("id", messageId);
 
     if (msgError) {

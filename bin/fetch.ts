@@ -188,21 +188,7 @@ function logAllDomainMailboxes(
   mailboxes: string[],
   processing?: string,
 ): void {
-  console.log(`Accounts on @${domainKey} (${mailboxes.length}):`);
-  if (mailboxes.length === 0) {
-    console.log("  (none)");
-    return;
-  }
-  const processingLower = processing?.trim().toLowerCase();
-  for (let i = 0; i < mailboxes.length; i++) {
-    const mailbox = mailboxes[i];
-    const isCurrent =
-      processingLower && mailbox.trim().toLowerCase() === processingLower;
-    console.log(`  ${i + 1}. ${mailbox}${isCurrent ? "  <- current" : ""}`);
-  }
-  if (processing) {
-    console.log(`\nCurrently processing: ${processing}`);
-  }
+  console.log(`Accounts on @${domainKey} (${mailboxes.length})\n ${mailboxes.join(",")}`);
 }
 
 function printUsage() {
@@ -1044,15 +1030,9 @@ async function runStalwartIngestion(
   const prefix = logMailbox ? `[${logMailbox}] ` : "";
   const impersonationIdx = username.indexOf("%");
 
-  if (impersonationIdx > 0) {
-    const target = username.slice(0, impersonationIdx);
-    const impersonator = username.slice(impersonationIdx + 1);
+  if (!(impersonationIdx > 0)) {
     console.log(
-      `${prefix}JMAP auth: Stalwart impersonation login "${target}%${impersonator}" (password: RELAY_SERVICE_ACCOUNT_PASSWORD)`,
-    );
-  } else {
-    console.log(
-      `${prefix}JMAP auth: direct Basic login as ${username} (password: JMAP_SERVICE_ACCOUNT_PASSWORD or --password)`,
+      `${prefix}direct Basic login as ${username}`,
     );
   }
 
@@ -1064,7 +1044,6 @@ async function runStalwartIngestion(
     politicianId = politician?.id;
   }
 
-  console.log(`${prefix}Connecting to Stalwart JMAP at ${jmapWellKnownUrl}...`);
   const session = await fetchJmapSession(jmapWellKnownUrl, authHeader);
   const accountId = resolveMailAccountIdFromSession(session);
   const inboxMailboxId = await resolveInboxMailboxId(
@@ -1118,11 +1097,6 @@ async function runStalwartIngestion(
       },
     );
   } else if (options.processAll) {
-    if (options.folder) {
-      console.log(`Fetching inbound messages from Inbox + ${options.folder}...`);
-    } else {
-      console.log("Fetching inbound inbox messages from Stalwart...");
-    }
     rawEmails = await fetchAllEmails(
       session.apiUrl,
       authHeader,
@@ -1164,7 +1138,6 @@ async function runStalwartIngestion(
   }
 
   if (validMessages.length === 0) {
-    console.log(`${prefix}No valid messages to process.`);
     return true;
   }
 
@@ -1332,9 +1305,6 @@ async function main() {
       let allOk = true;
       for (let i = 0; i < mailboxes.length; i++) {
         const mailbox = mailboxes[i];
-        console.log(
-          `\n[${i + 1}/${mailboxes.length}] Currently processing: ${mailbox}`,
-        );
         const principal = buildStalwartImpersonationLogin(
           relayCreds!.relayEmail,
           mailbox,

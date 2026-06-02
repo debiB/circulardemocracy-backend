@@ -474,6 +474,7 @@ async function sendReply(
     jmapConfig: WorkerConfig;
     template: {
       subject: string;
+      id: number;
       body: string;
       layout_type: string;
       campaign_name?: string;
@@ -591,7 +592,10 @@ async function sendReply(
     `[Reply Worker] ✓ Sent reply for message ${message.id} (sent ID: ${sendResult.messageId})`,
   );
 
-  await db.markMessageReplyDelivered(message.id);
+  await db.markMessageReplyDelivered(message.id, {
+    reply_id: sendResult.messageId,
+    reply_template_id: template.id,
+  });
 }
 
 /**

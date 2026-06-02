@@ -132,50 +132,6 @@ export type Database = {
           },
         ]
       }
-      message_contacts: {
-        Row: {
-          contact_captured_at: string
-          created_at: string | null
-          id: number
-          message_id: number
-          purged_at: string | null
-          reply_sent: boolean | null
-          sender_email: string
-          sender_hash: string
-          sender_name: string | null
-        }
-        Insert: {
-          contact_captured_at?: string
-          created_at?: string | null
-          id?: number
-          message_id: number
-          purged_at?: string | null
-          reply_sent?: boolean | null
-          sender_email: string
-          sender_hash: string
-          sender_name?: string | null
-        }
-        Update: {
-          contact_captured_at?: string
-          created_at?: string | null
-          id?: number
-          message_id?: number
-          purged_at?: string | null
-          reply_sent?: boolean | null
-          sender_email?: string
-          sender_hash?: string
-          sender_name?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "message_contacts_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: true
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       messages: {
         Row: {
           campaign_id: number | null
@@ -193,6 +149,7 @@ export type Database = {
           processing_status: string | null
           received_at: string
           reply_failure_reason: string | null
+          reply_id: string | null
           reply_last_retry_at: string | null
           reply_retry_count: number | null
           reply_scheduled_at: string | null
@@ -201,8 +158,6 @@ export type Database = {
           sender_country: string | null
           sender_flag: string | null
           sender_hash: string
-          stalwart_account_id: string | null
-          stalwart_message_id: string | null
         }
         Insert: {
           campaign_id?: number | null
@@ -220,6 +175,7 @@ export type Database = {
           processing_status?: string | null
           received_at: string
           reply_failure_reason?: string | null
+          reply_id?: string | null
           reply_last_retry_at?: string | null
           reply_retry_count?: number | null
           reply_scheduled_at?: string | null
@@ -228,8 +184,6 @@ export type Database = {
           sender_country?: string | null
           sender_flag?: string | null
           sender_hash: string
-          stalwart_account_id?: string | null
-          stalwart_message_id?: string | null
         }
         Update: {
           campaign_id?: number | null
@@ -247,6 +201,7 @@ export type Database = {
           processing_status?: string | null
           received_at?: string
           reply_failure_reason?: string | null
+          reply_id?: string | null
           reply_last_retry_at?: string | null
           reply_retry_count?: number | null
           reply_scheduled_at?: string | null
@@ -255,8 +210,6 @@ export type Database = {
           sender_country?: string | null
           sender_flag?: string | null
           sender_hash?: string
-          stalwart_account_id?: string | null
-          stalwart_message_id?: string | null
         }
         Relationships: [
           {
